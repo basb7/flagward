@@ -35,6 +35,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: dev
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -69,11 +70,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: runner
+      # NEXT_PUBLIC_* is inlined into the client bundle at build time.
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     restart: unless-stopped
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       backend:
         condition: service_started

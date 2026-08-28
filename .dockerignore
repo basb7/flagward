@@ -1,0 +1,72 @@
+# Build context for the backend image. The frontend has its own image and its
+# own context (./frontend), so everything under it is excluded here.
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Frontend (built by frontend/Dockerfile with ./frontend as its context)
+frontend/
+
+# Python virtual environments
+.venv/
+venv/
+ENV/
+
+# Python bytecode and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+build/
+dist/
+sdist/
+wheels/
+.eggs/
+
+# Local database and media
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Secrets and local environment (values are injected by compose / the platform)
+.env
+.env.*
+
+# Tests and tooling caches (dev runs them from the mounted source tree)
+tests/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Docker and compose definitions
+Dockerfile
+.dockerignore
+compose*.yml
+docker-compose*.yml
+
+# Documentation
+*.md
+LICENSE
+openspec/
+
+# Editors, AI tooling and OS noise
+.idea/
+.vscode/
+.atl/
+.claude/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs and dumps
+*.log
+dump.rdb
