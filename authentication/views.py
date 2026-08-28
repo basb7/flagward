@@ -231,8 +231,15 @@ def refresh_token(request):
             path='/',
         )
 
-        # If rotate refresh tokens, also set new refresh token
+        # If rotate refresh tokens, also set new refresh token.
+        # Re-serialising the incoming token would return the same string with
+        # the same expiry, so the deadline has to be moved explicitly: without
+        # this, a session dies REFRESH_TOKEN_LIFETIME after login no matter how
+        # actively it is used.
         if settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS'):
+            refresh.set_jti()
+            refresh.set_exp()
+            refresh.set_iat()
             new_refresh_token = str(refresh)
             response.set_cookie(
                 settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH'],

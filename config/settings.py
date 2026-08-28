@@ -170,10 +170,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Django REST Framework
 REST_FRAMEWORK = {
+    # This API is authenticated by the JWT cookie or an SDK API key. The Django
+    # admin has its own session middleware and never reaches DRF, so
+    # SessionAuthentication authenticated nobody here -- it only intercepted
+    # requests from anyone holding an admin session on the same origin and
+    # started demanding a CSRF token the dashboard does not send.
+    #
+    # Order also matters beyond precedence: DRF reads the WWW-Authenticate
+    # header from the first class listed and downgrades 401 to 403 when it has
+    # none, which would leave the client unable to tell an expired token from a
+    # permission denial, and so unable to know a refresh is worth attempting.
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-        'sdk_api.authentication.SDKAuthentication',
         'authentication.jwt_auth.JWTAuthenticationCookie',
+        'sdk_api.authentication.SDKAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
