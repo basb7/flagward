@@ -39,6 +39,14 @@ RUN adduser --system --group --no-create-home app
 
 COPY --chown=app:app . /app/
 
+# /app itself is created by the base stage and owned by root, so collectstatic
+# could not create its output directory under it.
+RUN mkdir -p /app/staticfiles && chown app:app /app /app/staticfiles
+
 USER app
+
+# Collect static files at build time so the running container needs no writable
+# volume for them. WhiteNoise serves the result; Django will not with DEBUG off.
+RUN DEBUG=False python manage.py collectstatic --noinput
 
 CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]

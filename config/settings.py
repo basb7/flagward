@@ -143,7 +143,27 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
+# With DEBUG on, django.contrib.staticfiles serves these through runserver. With
+# DEBUG off it stops, so WhiteNoise takes over and serves the files collected
+# into STATIC_ROOT at image build time. Adding it in development would only warn
+# about the STATIC_ROOT that collectstatic has not created yet.
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+if not DEBUG:
+    MIDDLEWARE.insert(
+        MIDDLEWARE.index('django.middleware.security.SecurityMiddleware') + 1,
+        'whitenoise.middleware.WhiteNoiseMiddleware',
+    )
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            # Compresses and hashes filenames for long-lived cache headers.
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
