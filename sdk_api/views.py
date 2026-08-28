@@ -1,19 +1,29 @@
 """
 SDK API views.
 """
+import asyncio
 import hashlib
 import json
 
+from asgiref.sync import sync_to_async
+from django.db import connection
 from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from core_flags.models import FeatureFlag
+from core_flags.notifications import asubscribe_to_flags
 from core_flags.services import FlagEvaluationService
 from sdk_api.authentication import IsSDKAuthenticated
 from sdk_api.models import EvaluationLog, SDKRegistration
 from sdk_api.payloads import serialize_environment_flags
+
+# How long a subscribed stream waits before sending a keepalive, so proxies do
+# not close an idle connection.
+KEEPALIVE_SECONDS = 15
+# Only used when Redis is unavailable and the stream has to ask the database.
+POLL_SECONDS = 2
 
 
 @api_view(["GET"])
@@ -115,54 +125,83 @@ def sdk_register(request):
     )
 
 
-def sdk_stream(request):
+async def sdk_stream(request):
     """
     SSE stream for real-time flag updates.
 
-    Streams flag changes as they happen.
-    This is a plain Django view (not DRF) because DRF doesn't support async streaming.
+    Written as an async view on purpose. Under ASGI a synchronous generator is
+    not streamed out chunk by chunk: the client receives the response headers
+    and then nothing, because this generator never finishes. That looks like a
+    healthy connection from the outside while no event is ever delivered.
     """
+    from django.http import JsonResponse
+
     # EventSource can't send headers, so check query param first
     api_key = request.GET.get("api_key") or request.META.get("HTTP_X_API_KEY")
     if not api_key:
-        from django.http import JsonResponse
         return JsonResponse({"detail": "Authentication credentials were not provided."}, status=401)
 
     from core_flags.models import Environment
 
     try:
-        environment = Environment.objects.get(api_key=api_key)
+        environment = await Environment.objects.aget(api_key=api_key)
     except Environment.DoesNotExist:
-        from django.http import JsonResponse
         return JsonResponse({"detail": "Invalid API key."}, status=401)
 
-    def event_stream():
-        """Generate SSE events."""
-        import time
+    def _read_flags():
+        """
+        Read the environment's flags, then hand the database connection back.
 
-        # Send initial connection event
-        yield f"event: connected\ndata: {json.dumps({'status': 'connected', 'environment': str(environment.key)})}\n\n"
-
-        def get_current_flags():
+        A stream only touches the database on connect and on change, but the
+        worker thread that does it keeps its connection for as long as it
+        lives. Holding one per connected client exhausts max_connections long
+        before the server runs out of capacity, and the symptom is a stream
+        that connects and then receives nothing.
+        """
+        try:
             return {
                 payload["key"]: payload
                 for payload in serialize_environment_flags(environment)
             }
+        finally:
+            connection.close()
 
-        last_flags = get_current_flags()
+    read_flags = sync_to_async(_read_flags)
+
+    async def event_stream():
+        """Generate SSE events."""
+        yield f"event: connected\ndata: {json.dumps({'status': 'connected', 'environment': str(environment.key)})}\n\n"
+
+        last_flags = await read_flags()
         yield f"event: flags\ndata: {json.dumps({'flags': list(last_flags.values())})}\n\n"
 
-        # Poll for changes every 2 seconds
-        while True:
-            time.sleep(2)
-            current_flags = get_current_flags()
+        subscription = await asubscribe_to_flags(environment.id)
 
-            if current_flags != last_flags:
-                last_flags = current_flags
-                yield f"event: flags\ndata: {json.dumps({'flags': list(current_flags.values())})}\n\n"
-            else:
-                # Keepalive when no changes
-                yield ": keepalive\n\n"
+        try:
+            while True:
+                if subscription is not None:
+                    # Woken by a write rather than asking. Costs no query while
+                    # nothing changes, and arrives without the polling delay.
+                    changed = await subscription.wait(KEEPALIVE_SECONDS)
+                else:
+                    # Without Redis there is nobody to wake us, so fall back to
+                    # asking the database on an interval.
+                    await asyncio.sleep(POLL_SECONDS)
+                    changed = True
+
+                if not changed:
+                    yield ": keepalive\n\n"
+                    continue
+
+                current_flags = await read_flags()
+                if current_flags != last_flags:
+                    last_flags = current_flags
+                    yield f"event: flags\ndata: {json.dumps({'flags': list(current_flags.values())})}\n\n"
+                else:
+                    yield ": keepalive\n\n"
+        finally:
+            if subscription is not None:
+                await subscription.close()
 
     response = StreamingHttpResponse(
         event_stream(),
