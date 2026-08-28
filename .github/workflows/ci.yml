@@ -18,6 +18,31 @@ jobs:
     name: Backend (lint + tests)
     runs-on: ubuntu-latest
 
+    # Production runs Postgres (compose.yml). Without this service the suite falls
+    # through to the SQLite branch in config/settings.py, and constraint-altering
+    # migrations are exactly where the two engines diverge.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: flagward
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_NAME: flagward
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: localhost
+      DB_PORT: '5432'
+
     steps:
       - uses: actions/checkout@v4
 
