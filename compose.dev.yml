@@ -2,10 +2,12 @@ name: flagward
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Postgres 18 images store data under a major-version subdirectory
+      # (PGDATA=/var/lib/postgresql/18/docker), so the parent is mounted.
+      - postgres_data:/var/lib/postgresql
     environment:
       POSTGRES_DB: flagward
       POSTGRES_USER: postgres
@@ -19,7 +21,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     volumes:
       - redis_data:/data
