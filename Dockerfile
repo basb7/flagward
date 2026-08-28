@@ -49,4 +49,10 @@ USER app
 # volume for them. WhiteNoise serves the result; Django will not with DEBUG off.
 RUN DEBUG=False python manage.py collectstatic --noinput
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]
+# ASGI with uvicorn workers: the SDK's SSE stream holds a connection open for as
+# long as a client is on the page, and a sync worker can only hold one at a
+# time. Four of them saturated the whole server.
+CMD ["gunicorn", "config.asgi:application", \
+     "--bind", "0.0.0.0:8000", \
+     "--workers", "4", \
+     "--worker-class", "uvicorn_worker.UvicornWorker"]
