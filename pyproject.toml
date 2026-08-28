@@ -1,0 +1,16 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["RUF012"]  # Django models/serializers use mutable class attributes
+
+[tool.ruff.lint.per-file-ignores]
+"*/migrations/*" = ["E501"]  # Auto-generated migration files

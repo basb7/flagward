@@ -1,0 +1,480 @@
+/**
+ * API client for Flagward backend.
+ * Uses httpOnly cookies for authentication.
+ */
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+async function request<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+    credentials: 'include', // Include cookies
+  });
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ message: 'An error occurred' }));
+
+    // DRF returns different error formats
+    let errorMessage = 'Request failed';
+
+    if (error.detail) {
+      errorMessage = error.detail;
+    } else if (error.message) {
+      errorMessage = error.message;
+    } else if (typeof error === 'object') {
+      const messages = Object.entries(error)
+        .map(([field, msgs]) => {
+          const text = Array.isArray(msgs) ? msgs.join(', ') : msgs;
+          return `${field}: ${text}`;
+        })
+        .join('\n');
+      if (messages) {
+        errorMessage = messages;
+      }
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  // 204 No Content has no body to parse
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json();
+}
+
+/**
+ * Serialize a params object into a query string, dropping empty values so the
+ * backend never receives `?environment=` and treats it as a real filter.
+ */
+function buildQuery(
+  params: Record<string, string | number | boolean | undefined>,
+) {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    search.set(key, String(value));
+  }
+
+  const query = search.toString();
+  return query ? `?${query}` : '';
+}
+
+// Auth API
+export const authApi = {
+  login: (username: string, password: string) =>
+    request<{ user: { id: number; username: string; email: string } }>(
+      '/api/v1/auth/login/',
+      {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      },
+    ),
+
+  register: (username: string, email: string, password: string) =>
+    request<{ user: { id: number; username: string; email: string } }>(
+      '/api/v1/auth/register/',
+      {
+        method: 'POST',
+        body: JSON.stringify({ username, email, password }),
+      },
+    ),
+
+  logout: () =>
+    request<{ message: string }>('/api/v1/auth/logout/', {
+      method: 'POST',
+    }),
+
+  me: () =>
+    request<{ id: number; username: string; email: string }>(
+      '/api/v1/auth/me/',
+    ),
+
+  refresh: () =>
+    request<{ message: string }>('/api/v1/auth/refresh/', {
+      method: 'POST',
+    }),
+};
+
+// Environments API
+export interface Environment {
+  id: string;
+  name: string;
+  key: string;
+  api_key: string;
+}
+
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+export const environmentsApi = {
+  list: (page = 1) =>
+    request<PaginatedResponse<Environment>>(
+      `/api/v1/environments/?page=${page}`,
+    ),
+
+  get: (id: string) => request<Environment>(`/api/v1/environments/${id}/`),
+
+  create: (data: { name: string; key: string }) =>
+    request<Environment>('/api/v1/environments/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<Environment>) =>
+    request<Environment>(`/api/v1/environments/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/api/v1/environments/${id}/`, {
+      method: 'DELETE',
+    }),
+};
+
+// Feature Flags API
+export interface ActiveOverride {
+  id: string;
+  is_enabled: boolean;
+  reason: string;
+  created_at: string;
+}
+
+export interface FeatureFlag {
+  id: string;
+  environment: string;
+  key: string;
+  name: string;
+  description: string;
+  /** The configured state. An active override can make this differ from what SDKs see. */
+  is_enabled: boolean;
+  /** What SDKs actually serve: the override's value while one is active. */
+  effective_is_enabled: boolean;
+  active_override: ActiveOverride | null;
+  flag_type: 'BOOLEAN' | 'MULTIVARIATE';
+  rules: StrategyRule[];
+}
+
+export interface StrategyRule {
+  id: string;
+  priority: number;
+  operator_logic: 'AND' | 'OR';
+  conditions: Condition[];
+}
+
+export interface Condition {
+  id: string;
+  attribute: string;
+  operator: string;
+  value: unknown;
+}
+
+export const flagsApi = {
+  list: (page = 1) =>
+    request<PaginatedResponse<FeatureFlag>>(`/api/v1/flags/?page=${page}`),
+
+  get: (id: string) => request<FeatureFlag>(`/api/v1/flags/${id}/`),
+
+  create: (data: {
+    environment: string;
+    key: string;
+    name: string;
+    description?: string;
+  }) =>
+    request<FeatureFlag>('/api/v1/flags/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<FeatureFlag>) =>
+    request<FeatureFlag>(`/api/v1/flags/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/api/v1/flags/${id}/`, {
+      method: 'DELETE',
+    }),
+};
+
+// Strategy Rules API
+export interface StrategyRuleCreate {
+  flag: string;
+  priority: number;
+  operator_logic: 'AND' | 'OR';
+}
+
+export const rulesApi = {
+  list: (flagId?: string) => {
+    const params = flagId ? `?flag=${flagId}` : '';
+    return request<PaginatedResponse<StrategyRule>>(`/api/v1/rules/${params}`);
+  },
+
+  get: (id: string) => request<StrategyRule>(`/api/v1/rules/${id}/`),
+
+  create: (data: StrategyRuleCreate) =>
+    request<StrategyRule>('/api/v1/rules/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<StrategyRule>) =>
+    request<StrategyRule>(`/api/v1/rules/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/api/v1/rules/${id}/`, {
+      method: 'DELETE',
+    }),
+};
+
+// Conditions API
+export interface ConditionCreate {
+  rule: string;
+  attribute: string;
+  operator: string;
+  value: unknown;
+}
+
+export const conditionsApi = {
+  list: (ruleId?: string) => {
+    const params = ruleId ? `?rule=${ruleId}` : '';
+    return request<PaginatedResponse<Condition>>(
+      `/api/v1/conditions/${params}`,
+    );
+  },
+
+  get: (id: string) => request<Condition>(`/api/v1/conditions/${id}/`),
+
+  create: (data: ConditionCreate) =>
+    request<Condition>('/api/v1/conditions/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<Condition>) =>
+    request<Condition>(`/api/v1/conditions/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/api/v1/conditions/${id}/`, {
+      method: 'DELETE',
+    }),
+};
+
+// Flag Overrides API (append-only audit trail / kill switch)
+export interface FlagOverride {
+  id: string;
+  flag: string;
+  flag_key: string;
+  flag_name: string;
+  environment: string;
+  environment_key: string;
+  is_enabled: boolean;
+  /** False once lifted. A lifted override stays in the trail but stops forcing. */
+  is_active: boolean;
+  reason: string;
+  created_at: string;
+  cleared_at: string | null;
+}
+
+export interface FlagOverrideCreate {
+  flag: string;
+  is_enabled: boolean;
+  reason: string;
+}
+
+export const overridesApi = {
+  list: (
+    params: {
+      flag?: string;
+      environment?: string;
+      active?: boolean;
+      page?: number;
+    } = {},
+  ) =>
+    request<PaginatedResponse<FlagOverride>>(
+      `/api/v1/overrides/${buildQuery(params)}`,
+    ),
+
+  get: (id: string) => request<FlagOverride>(`/api/v1/overrides/${id}/`),
+
+  create: (data: FlagOverrideCreate) =>
+    request<FlagOverride>('/api/v1/overrides/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Stop forcing the flag. The row stays in the trail, stamped as lifted. */
+  lift: (id: string) =>
+    request<FlagOverride>(`/api/v1/overrides/${id}/lift/`, {
+      method: 'POST',
+    }),
+};
+
+// SDK Registrations API (read-only: written by the SDK surface)
+export type SDKType = 'PYTHON' | 'JAVASCRIPT' | 'GO';
+
+export interface SDKRegistration {
+  id: string;
+  environment: string;
+  environment_key: string;
+  environment_name: string;
+  sdk_type: SDKType;
+  sdk_key: string;
+  version: string;
+  last_seen_at: string;
+  created_at: string;
+}
+
+export const sdkRegistrationsApi = {
+  list: (
+    params: { environment?: string; sdk_type?: SDKType; page?: number } = {},
+  ) =>
+    request<PaginatedResponse<SDKRegistration>>(
+      `/api/v1/sdk-registrations/${buildQuery(params)}`,
+    ),
+};
+
+// Evaluation Logs API (read-only)
+export interface EvaluationLog {
+  id: string;
+  flag: string;
+  flag_key: string;
+  flag_name: string;
+  environment: string;
+  environment_key: string;
+  context_hash: string;
+  result: boolean;
+  timestamp: string;
+}
+
+export const evaluationsApi = {
+  list: (
+    params: {
+      flag?: string;
+      environment?: string;
+      result?: boolean;
+      page?: number;
+    } = {},
+  ) =>
+    request<PaginatedResponse<EvaluationLog>>(
+      `/api/v1/evaluations/${buildQuery(params)}`,
+    ),
+};
+
+// Analytics API
+export interface AnalyticsOverview {
+  generated_at: string;
+  environments: { total: number };
+  flags: {
+    total: number;
+    /** Configured state. */
+    enabled: number;
+    disabled: number;
+    /** What SDKs serve once active overrides are applied. */
+    effective_enabled: number;
+    /** Flags whose effective state is being forced by an override. */
+    overridden: number;
+  };
+  sdks: {
+    total: number;
+    active: number;
+    stale: number;
+    active_window_minutes: number;
+  };
+  evaluations: {
+    total: number;
+    last_24h: number;
+    true_rate: number | null;
+    true_rate_24h: number | null;
+  };
+  overrides: { total: number; active: number; last_24h: number };
+}
+
+export interface EvaluationBucket {
+  timestamp: string;
+  total: number;
+  true_count: number;
+  false_count: number;
+}
+
+export interface EvaluationsTimeseries {
+  hours: number;
+  from: string;
+  to: string;
+  total: number;
+  buckets: EvaluationBucket[];
+}
+
+export interface TopFlag {
+  flag: string;
+  flag_key: string;
+  flag_name: string;
+  environment_key: string;
+  evaluations: number;
+  true_count: number;
+  false_count: number;
+  true_rate: number | null;
+}
+
+export interface SDKHealth {
+  active_window_minutes: number;
+  total: number;
+  active: number;
+  stale: number;
+  by_type: {
+    sdk_type: SDKType;
+    total: number;
+    active: number;
+    stale: number;
+  }[];
+  by_version: { sdk_type: SDKType; version: string; total: number }[];
+}
+
+export const analyticsApi = {
+  overview: (params: { environment?: string } = {}) =>
+    request<AnalyticsOverview>(
+      `/api/v1/analytics/overview/${buildQuery(params)}`,
+    ),
+
+  evaluationsTimeseries: (
+    params: { hours?: number; environment?: string } = {},
+  ) =>
+    request<EvaluationsTimeseries>(
+      `/api/v1/analytics/evaluations/timeseries/${buildQuery(params)}`,
+    ),
+
+  topFlags: (
+    params: { hours?: number; limit?: number; environment?: string } = {},
+  ) =>
+    request<{ hours: number; limit: number; results: TopFlag[] }>(
+      `/api/v1/analytics/flags/top/${buildQuery(params)}`,
+    ),
+
+  sdkHealth: (params: { environment?: string } = {}) =>
+    request<SDKHealth>(`/api/v1/analytics/sdks/health/${buildQuery(params)}`),
+};

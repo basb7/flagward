@@ -1,0 +1,63 @@
+project: flagward
+context: |
+  Python 3.14 + Django project for feature flags management.
+  Currently empty: venv configured with Django, no application code yet.
+
+strict_tdd: true
+
+testing:
+  runner: pytest
+  command: pytest
+  framework: pytest
+  layers:
+    unit: true
+    integration: true
+    e2e: false
+  coverage:
+    available: true
+    command: pytest --cov
+  quality:
+    linter: ruff check
+    type_checker: mypy
+    formatter: ruff format
+
+phases:
+  proposal:
+    required_inputs:
+      - exploration
+    outputs:
+      - proposal
+  spec:
+    required_inputs:
+      - proposal
+    outputs:
+      - spec
+  design:
+    required_inputs:
+      - proposal
+    outputs:
+      - design
+  tasks:
+    required_inputs:
+      - spec
+      - design
+    outputs:
+      - tasks
+  apply:
+    required_inputs:
+      - tasks
+      - spec
+      - design
+    outputs:
+      - apply_progress
+  verify:
+    required_inputs:
+      - spec
+      - tasks
+      - apply_progress
+    outputs:
+      - verify_report
+  archive:
+    required_inputs: all
+    outputs:
+      - archive_report
