@@ -8,6 +8,7 @@ from core_flags.models import (
     Environment,
     FeatureFlag,
 )
+from sdk_api.models import SDKRegistration
 
 
 @pytest.mark.django_db
@@ -75,6 +76,15 @@ class TestSDKRegisterEndpoint:
         self.client = APIClient()
         self.env = Environment.objects.create(name="Prod", key="prod")
 
+    def register(self, version="1.0.0"):
+        """Register a JavaScript SDK against this environment's API key."""
+        return self.client.post(
+            "/api/v1/sdk/register/",
+            {"sdk_type": "JAVASCRIPT", "version": version},
+            format="json",
+            HTTP_X_API_KEY=self.env.api_key,
+        )
+
     def test_sdk_register_requires_authentication(self):
         """Test that SDK register endpoint requires authentication."""
         response = self.client.post("/api/v1/sdk/register/", {})
@@ -82,10 +92,29 @@ class TestSDKRegisterEndpoint:
 
     def test_sdk_register_creates_registration(self):
         """Test that SDK register creates a new registration."""
-        self.client.force_authenticate(user=None)
-        # TODO: Implement API key authentication
-        # For now, this test documents the expected behavior
-        pass
+        response = self.register()
+
+        assert response.status_code == 201
+        assert response.data["created"] is True
+        assert SDKRegistration.objects.filter(environment=self.env).count() == 1
+
+    def test_sdk_register_is_idempotent(self):
+        """
+        Repeated registrations update the existing row instead of adding one.
+
+        Clients share their environment's API key and register on every start,
+        so this endpoint is called far more often than rows should exist.
+        """
+        first = self.register(version="1.0.0")
+        second = self.register(version="1.0.1")
+
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert second.data["created"] is False
+        assert SDKRegistration.objects.filter(environment=self.env).count() == 1
+
+        registration = SDKRegistration.objects.get(environment=self.env)
+        assert registration.version == "1.0.1"
 
 
 @pytest.mark.django_db
