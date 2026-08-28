@@ -5,9 +5,74 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+const REFRESH_ENDPOINT = '/api/v1/auth/refresh/';
+
+/**
+ * Endpoints that must never trigger a refresh attempt: they either establish
+ * the session or are the refresh itself, so retrying them would loop.
+ */
+const SESSION_ENDPOINTS = [
+  '/api/v1/auth/login/',
+  '/api/v1/auth/register/',
+  '/api/v1/auth/logout/',
+  REFRESH_ENDPOINT,
+];
+
+/** A failed response, carrying the status the caller needs to react to it. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+let sessionExpiredHandler: (() => void) | null = null;
+
+/**
+ * Register the callback fired when the session cannot be recovered, so the UI
+ * can drop the user it is holding and send them back to the login page.
+ */
+export function onSessionExpired(handler: () => void) {
+  sessionExpiredHandler = handler;
+  return () => {
+    if (sessionExpiredHandler === handler) {
+      sessionExpiredHandler = null;
+    }
+  };
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * Exchange the refresh cookie for a new access cookie.
+ *
+ * The dashboard fires several requests at once, so a shared promise keeps a
+ * burst of 401s from firing a burst of refreshes.
+ */
+function refreshSession(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${API_BASE_URL}${REFRESH_ENDPOINT}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    })
+      .then((response) => response.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+
+  return refreshInFlight;
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {},
+  allowRefresh = true,
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -19,6 +84,19 @@ async function request<T>(
     headers,
     credentials: 'include', // Include cookies
   });
+
+  // The access token expires long before the refresh token does, so a 401 is
+  // usually recoverable without the user noticing.
+  if (
+    response.status === 401 &&
+    allowRefresh &&
+    !SESSION_ENDPOINTS.some((path) => endpoint.startsWith(path))
+  ) {
+    if (await refreshSession()) {
+      return request<T>(endpoint, options, false);
+    }
+    sessionExpiredHandler?.();
+  }
 
   if (!response.ok) {
     const error = await response
@@ -44,7 +122,7 @@ async function request<T>(
       }
     }
 
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status);
   }
 
   // 204 No Content has no body to parse

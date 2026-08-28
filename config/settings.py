@@ -170,10 +170,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Django REST Framework
 REST_FRAMEWORK = {
+    # Order matters beyond precedence: DRF reads the WWW-Authenticate header
+    # from the first class listed, and downgrades 401 to 403 when it has none.
+    # SessionAuthentication has none, so leading with it made every expired
+    # session indistinguishable from a permission denial, and the client had no
+    # way to tell that refreshing the token was worth attempting.
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'authentication.jwt_auth.JWTAuthenticationCookie',
         'rest_framework.authentication.SessionAuthentication',
         'sdk_api.authentication.SDKAuthentication',
-        'authentication.jwt_auth.JWTAuthenticationCookie',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',

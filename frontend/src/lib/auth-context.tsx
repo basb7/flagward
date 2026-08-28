@@ -7,7 +7,7 @@ import {
   useEffect,
   useState,
 } from 'react';
-import { authApi } from '@/lib/api';
+import { authApi, onSessionExpired } from '@/lib/api';
 
 interface User {
   id: number;
@@ -43,14 +43,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, [checkAuth]);
 
+  // checkAuth only runs on mount, so without this the user stays in state long
+  // after the cookies stop working: requests fail while the UI still believes
+  // it is signed in, and the guard that redirects to /login never fires.
+  useEffect(() => onSessionExpired(() => setUser(null)), []);
+
   const login = async (username: string, password: string) => {
     const response = await authApi.login(username, password);
     setUser(response.user);
   };
 
   const logout = async () => {
-    await authApi.logout();
-    setUser(null);
+    try {
+      await authApi.logout();
+    } finally {
+      // An expired session cannot be logged out of, but the client still has
+      // to forget it.
+      setUser(null);
+    }
   };
 
   return (
