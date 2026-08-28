@@ -119,3 +119,42 @@ class TestUnauthenticatedStatus:
         response = self.client.get('/api/v1/flags/')
 
         assert response.status_code == 401
+
+
+@pytest.mark.django_db
+class TestDjangoSessionDoesNotHijackTheApi:
+    """
+    Visiting /admin/ leaves a Django session cookie on the same origin. If
+    SessionAuthentication is in the stack it authenticates the dashboard's
+    requests through that session and starts enforcing CSRF, which the
+    frontend never sends, so every unsafe request fails until the user logs
+    out of the admin.
+    """
+
+    def setup_method(self):
+        # The test client disables CSRF checks unless asked to keep them.
+        self.client = APIClient(enforce_csrf_checks=True)
+        self.user = User.objects.create_user(username='admin', password='secret')
+
+    def test_login_succeeds_while_a_django_session_is_active(self):
+        """A session from the admin must not make the API demand a CSRF token."""
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            '/api/v1/auth/login/',
+            {'username': 'admin', 'password': 'secret'},
+            format='json',
+        )
+
+        assert response.status_code == 200
+
+    def test_a_django_session_alone_does_not_authenticate_the_api(self):
+        """
+        The API is authenticated by the JWT cookie or an API key, never by the
+        admin session: holding one must not grant access to dashboard data.
+        """
+        self.client.force_login(self.user)
+
+        response = self.client.get('/api/v1/flags/')
+
+        assert response.status_code == 401
