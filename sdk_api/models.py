@@ -28,6 +28,19 @@ class SDKRegistration(models.Model):
     last_seen_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        constraints = [
+            # A registration is an inventory row, not one row per running
+            # instance: every client sharing an environment's API key updates
+            # the same row. Without this, two concurrent registrations both
+            # insert, and update_or_create then fails permanently with
+            # MultipleObjectsReturned.
+            models.UniqueConstraint(
+                fields=["environment", "sdk_type"],
+                name="unique_sdk_registration_per_environment_and_type",
+            ),
+        ]
+
     def __str__(self):
         return f"{self.sdk_type} SDK ({self.sdk_key})"
 
