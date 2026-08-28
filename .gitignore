@@ -65,3 +65,6 @@ frontend/.env*.local
 
 # Local AI tooling metadata (contains machine-specific paths)
 .atl/
+
+# CodeGraph local index
+.codegraph/
