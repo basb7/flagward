@@ -20,6 +20,7 @@ ordinary visibility, not administration -- the same split
 `get_queryset` and its `_require_manage_permission`-gated mutations.
 """
 import pytest
+from django.contrib.auth import get_user_model
 
 from tenancy.models import (
     EnvironmentMembership,
@@ -30,6 +31,8 @@ from tenancy.models import (
     ProjectMembership,
     ProjectRole,
 )
+
+User = get_user_model()
 
 
 @pytest.mark.django_db
@@ -121,3 +124,49 @@ class TestEnvironmentMembershipListing:
 
         assert response.status_code == 200
         assert response.data["results"] == []
+
+
+@pytest.mark.django_db
+class TestMembershipListingNamesPeople:
+    """
+    A members screen has to name people. A bare `user` pk names nobody, and
+    the API exposes no user-detail endpoint to resolve one against, so the
+    username travels with the membership row or not at all.
+    """
+
+    def test_organization_membership_list_carries_the_username(
+        self, api_client, user, grant, organization
+    ):
+        grant(user, org=organization, role=OrganizationRole.ADMIN)
+
+        response = api_client(user).get("/api/v1/tenancy/organization-memberships/")
+
+        assert response.status_code == 200
+        assert response.data["results"][0]["username"] == user.username
+
+    def test_listing_costs_one_query_per_page_not_one_per_member(
+        self, api_client, user, grant, organization, django_assert_max_num_queries
+    ):
+        """
+        `username` reads through the membership's user relation, so without
+        select_related each row would fetch its own. The count below is a
+        ceiling, not a target -- it fails loudly if a future change
+        reintroduces the per-row query.
+        """
+        grant(user, org=organization, role=OrganizationRole.ADMIN)
+        others = User.objects.bulk_create(
+            User(username=f"member{i}", password="!") for i in range(10)
+        )
+        OrganizationMembership.objects.bulk_create(
+            OrganizationMembership(
+                organization=organization, user=other, role=OrganizationRole.USER
+            )
+            for other in others
+        )
+        client = api_client(user)
+
+        with django_assert_max_num_queries(8):
+            response = client.get("/api/v1/tenancy/organization-memberships/")
+
+        assert response.status_code == 200
+        assert len(response.data["results"]) == 11

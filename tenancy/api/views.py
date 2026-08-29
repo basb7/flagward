@@ -134,10 +134,20 @@ class OrganizationMembershipViewSet(
     queryset = OrganizationMembership.objects.select_related("organization")
     serializer_class = OrganizationMembershipUpdateSerializer
 
+    def get_serializer_class(self):
+        # Reading and writing are different shapes. The update serializer
+        # exists to accept a role change and pins everything else read-only;
+        # using it for `list` too made the collection answer in the write
+        # shape, which is how it ended up without the username the members
+        # screen needs to name anyone.
+        if self.action == "list":
+            return OrganizationMembershipSerializer
+        return super().get_serializer_class()
+
     def get_queryset(self):
         # Layer 1: an organization the requester cannot even see is a 404
         # (or, for `list`, simply absent from the collection).
-        return OrganizationMembership.objects.filter(
+        return OrganizationMembership.objects.select_related("user").filter(
             organization__in=orgs_with(self.request.user, Capability.ORG_VIEW)
         )
 
@@ -203,7 +213,7 @@ class ProjectMembershipViewSet(
     visibility, not the `PROJECT_MANAGE_MEMBERS` capability creation requires.
     """
 
-    queryset = ProjectMembership.objects.select_related("project__organization")
+    queryset = ProjectMembership.objects.select_related("project__organization", "user")
     serializer_class = ProjectMembershipSerializer
 
     def get_queryset(self):
@@ -223,7 +233,9 @@ class EnvironmentMembershipViewSet(
     capability creation requires on the environment's parent project.
     """
 
-    queryset = EnvironmentMembership.objects.select_related("environment__project__organization")
+    queryset = EnvironmentMembership.objects.select_related(
+        "environment__project__organization", "user"
+    )
     serializer_class = EnvironmentMembershipSerializer
 
     def get_queryset(self):

@@ -1,6 +1,14 @@
 'use client';
 
-import { Activity, Flag, Layers, LayoutGrid, LogOut, User } from 'lucide-react';
+import {
+  Activity,
+  Flag,
+  Layers,
+  LayoutGrid,
+  LogOut,
+  User,
+  Users,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -19,6 +27,7 @@ const TABS = [
   { href: '/dashboard/flags', label: 'Flags', icon: Flag },
   { href: '/dashboard/environments', label: 'Environments', icon: Layers },
   { href: '/dashboard/monitoring', label: 'Monitoring', icon: Activity },
+  { href: '/dashboard/members', label: 'Members', icon: Users },
 ] as const;
 
 export function DashboardNav() {

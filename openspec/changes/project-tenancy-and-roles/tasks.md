@@ -424,28 +424,31 @@ preview is the design's mitigation for its top risk (admins misreading union/car
       dialog had no way to supply it before this).
 - [x] 7.5 Modify `frontend/src/components/layout/dashboard-nav.tsx`: org/project switcher,
       Members nav entry.
-- [ ] 7.6 (7b) Create `frontend/src/app/dashboard/members/page.tsx`: additive grants list (never a
+- [x] 7.6 (7b) Create `frontend/src/app/dashboard/members/page.tsx`: additive grants list (never a
       checkbox grid — union cannot carve out) + effective-capability preview against 6.10's
-      endpoint. Deviation (backend gap, not fixed here): `OrganizationMembershipViewSet`,
-      `ProjectMembershipViewSet` and `EnvironmentMembershipViewSet` originally exposed no list
-      endpoint, so this screen could only show members created in the current session. Slice 8
-      added scoped listing to all three, and the session-local workaround and its in-UI
-      limitation notice were removed.
+      endpoint. **7b scope**: rewired the page slice 7a/8 left session-local (no membership-list
+      endpoint existed yet) to the real listing endpoints slice 8 added
+      (`OrganizationMembershipViewSet`/`ProjectMembershipViewSet`/`EnvironmentMembershipViewSet`
+      `list`). Added `list()` to `organizationMembershipsApi`, `projectMembershipsApi`,
+      `environmentMembershipsApi` in `frontend/src/lib/api.ts` (none of the three viewsets accept
+      a query-param filter, so the page narrows organization/project/environment client-side).
+      Deleted the session-local `SessionMember`/`SessionGrant` state, the in-UI "Known
+      limitation" card, and every comment describing the missing endpoints. Deviation (real gap,
+      reported not worked around): the membership serializers return only a numeric `user` id,
+      no username and no user-detail endpoint exists to resolve one — a member created from this
+      screen keeps its typed username in local state; any other row displays `User #<id>`.
 - [x] 7.7 Modify the 6 pages under `frontend/src/app/dashboard/{page,environments,flags,
       flags/[id]/rules,monitoring}` to read `currentProject` and forward `?project=` on the
       wire only (not in the app's own URLs). `flags/[id]/rules/page.tsx` needed no change - it
       operates on one already tenant-scoped flag and calls no project-scoped list endpoint.
       The client-side filtering fallback this task originally needed was removed once slice 8
       wired the real `?project=` filter into `EnvironmentViewSet`/`FeatureFlagViewSet`.
-- [x] 7.8 Ran `npm run lint && npm run build` in `frontend/` — both green. Manual confirmation
-      in a running app NOT performed (no browser available to this agent) — unverified:
-      switching project actually re-filtering the 6 pages' lists in a live session, and a
-      proposed grant's preview matching the capability set observed after saving.
-
-      wire only (not in the app's own URLs).
-- [ ] 7.8 Run `npm run lint && npm run build` in `frontend/`; manually confirm switching
-      project re-filters lists, and a proposed grant's preview matches the capability set
-      observed after saving.
+- [x] 7.8 Ran `npm run lint && npm run build` in `frontend/` — both green (re-confirmed after
+      7b). Manual confirmation in a running app NOT performed (no browser available to any
+      agent on this change) — unverified: switching project actually re-filtering the 6 pages'
+      lists in a live session, and a proposed grant's preview matching the capability set
+      observed after saving, and the members screen's real listing rendering correctly in a
+      live session.
 
 ## Phase 8 - Slice 8: API gaps found while building the frontend
 
