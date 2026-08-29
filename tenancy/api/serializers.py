@@ -4,7 +4,19 @@ Serializers for the tenancy API.
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from tenancy.models import Organization, OrganizationMembership, OrganizationRole, Project
+from tenancy.capabilities import Capability
+from tenancy.models import (
+    EnvironmentMembership,
+    EnvironmentRole,
+    Organization,
+    OrganizationMembership,
+    OrganizationRole,
+    Project,
+    ProjectMembership,
+    ProjectRole,
+)
+from tenancy.scoping import environments_with, orgs_with, projects_with
+from tenancy.serializers import CapabilityScopedFKMixin
 
 User = get_user_model()
 
@@ -54,3 +66,104 @@ class OrganizationMemberCreateSerializer(serializers.Serializer):
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError("A user with this username already exists.")
         return value
+
+
+class OrganizationMembershipUpdateSerializer(serializers.ModelSerializer):
+    """
+    Role-only update for an existing `OrganizationMembership` (tasks 6.8/6.9:
+    the Organization Administration Invariant is enforced by the view, not
+    here -- the check needs `select_for_update()` inside one transaction,
+    which a serializer cannot express).
+    """
+    class Meta:
+        model = OrganizationMembership
+        fields = ['id', 'organization', 'user', 'role', 'created_at']
+        read_only_fields = ['id', 'organization', 'user', 'created_at']
+
+
+class ProjectMembershipSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
+    """
+    Grants a `ProjectMembership` role to a user (spec/organization-management:
+    Per-Project and Per-Environment Role Grants).
+
+    `project` is narrowed (design D5, Layer 2 -- the only create-time gate)
+    to projects the requester holds `project.manage_members` on. The target
+    `user` is left unnarrowed on purpose -- the organization-membership
+    prerequisite is a cross-field check (`validate`), not a queryset filter,
+    because it depends on the *chosen* project's organization.
+    """
+    capability_scoped_fields = {
+        "project": (Capability.PROJECT_MANAGE_MEMBERS, projects_with),
+    }
+
+    class Meta:
+        model = ProjectMembership
+        fields = ['id', 'project', 'user', 'role', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def validate(self, attrs):
+        project = attrs["project"]
+        target_user = attrs["user"]
+        if not OrganizationMembership.objects.filter(
+            organization=project.organization, user=target_user
+        ).exists():
+            raise serializers.ValidationError(
+                "Target user has no organization membership in this organization."
+            )
+        return attrs
+
+
+class EnvironmentMembershipSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
+    """
+    Grants an `EnvironmentMembership` role to a user
+    (spec/organization-management: Per-Project and Per-Environment Role
+    Grants). Gated by `project.manage_members` on the environment's parent
+    project, per the spec's requirement text -- there is no separate
+    environment-level "manage members" capability.
+    """
+    capability_scoped_fields = {
+        "environment": (Capability.PROJECT_MANAGE_MEMBERS, environments_with),
+    }
+
+    class Meta:
+        model = EnvironmentMembership
+        fields = ['id', 'environment', 'user', 'role', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def validate(self, attrs):
+        environment = attrs["environment"]
+        target_user = attrs["user"]
+        if not OrganizationMembership.objects.filter(
+            organization=environment.project.organization, user=target_user
+        ).exists():
+            raise serializers.ValidationError(
+                "Target user has no organization membership in this organization."
+            )
+        return attrs
+
+
+class EffectiveCapabilitiesPreviewSerializer(CapabilityScopedFKMixin, serializers.Serializer):
+    """
+    Input for `POST /effective-capabilities/preview/` (design D10). Takes
+    PROPOSED, unsaved roles -- nothing here is persisted.
+
+    `organization` is narrowed (design D5, Layer 2) to organizations the
+    requester can see, exactly like every other writable FK in this app --
+    without it, an invisible organization id would 400 differently from a
+    visible one, a small but real existence oracle for something meant to be
+    unprobable by a caller who cannot administer it.
+    """
+    capability_scoped_fields = {
+        "organization": (Capability.ORG_VIEW, orgs_with),
+    }
+
+    organization = serializers.PrimaryKeyRelatedField(queryset=Organization.objects.all())
+    organization_role = serializers.ChoiceField(
+        choices=OrganizationRole.choices, required=False, allow_null=True, default=None
+    )
+    project_roles = serializers.DictField(
+        child=serializers.ChoiceField(choices=ProjectRole.choices), required=False, default=dict
+    )
+    environment_roles = serializers.DictField(
+        child=serializers.ChoiceField(choices=EnvironmentRole.choices), required=False, default=dict
+    )

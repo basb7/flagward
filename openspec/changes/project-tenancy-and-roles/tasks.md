@@ -373,19 +373,29 @@ Users, Per-Project and Per-Environment Role Grants, Seat Accounting Against the 
       `resolve_capabilities`) was estimated at 700-900 lines on its own, which would have run
       well past 800 combined with 6a. Stopped cleanly at this boundary rather than overrunning
       or compressing by dropping tests.**
-- [ ] 6.6 RED — `test_grant_project_role` / `test_grant_environment_role` /
+- [x] 6.6 RED — `test_grant_project_role` / `test_grant_environment_role` /
       `test_grant_rejected_without_org_membership`.
-- [ ] 6.7 GREEN — grant endpoints for `ProjectMembership` and `EnvironmentMembership`,
+- [x] 6.7 GREEN — grant endpoints for `ProjectMembership` and `EnvironmentMembership`,
       enforcing the org-membership prerequisite.
-- [ ] 6.8 RED - `test_last_admin_cannot_be_removed` and
+- [x] 6.8 RED - `test_last_admin_cannot_be_removed` and
       `test_last_admin_cannot_be_demoted`. `OrganizationRole.OWNER` no longer exists (slice 3);
       the invariant now protects the last `ADMIN`, and the lockout it prevents is unchanged.
-- [ ] 6.9 GREEN - enforce the administration invariant on organization membership delete
+- [x] 6.9 GREEN - enforce the administration invariant on organization membership delete
       and demote.
-- [ ] 6.10 GREEN — `POST /api/v1/tenancy/effective-capabilities/preview/`: takes proposed
+- [x] 6.10 GREEN — `POST /api/v1/tenancy/effective-capabilities/preview/`: takes proposed
       unsaved roles, answers through `resolve_capabilities` (design D10); requires
       `project.manage_members` on every referenced project.
       *(— 6b boundary: project/env grant CRUD + ownership invariant + preview.)*
+      **6b COMPLETE — 406/406 tests green on Postgres (393 baseline + 13 new), ruff clean.
+      Measured changed lines: 582 (297 tracked diff across `tenancy/api/{views,serializers,
+      urls}.py` + 285 in three new untracked test files). New endpoints:
+      `POST /api/v1/tenancy/project-memberships/`, `POST /api/v1/tenancy/
+      environment-memberships/` (both narrow their `project`/`environment` FK via
+      `CapabilityScopedFKMixin` to `project.manage_members`, per the spec's single-capability
+      gate for both grant kinds), `PATCH`/`DELETE /api/v1/tenancy/organization-memberships/{id}/`
+      (administration invariant under `select_for_update()` on the org's `ADMIN` rows), and
+      `POST /api/v1/tenancy/effective-capabilities/preview/` (narrows `organization` too, so an
+      invisible org 400s the same way any other narrowed FK does).**
 
 ## Phase 7 — Slice 7: Frontend (feature work)
 
