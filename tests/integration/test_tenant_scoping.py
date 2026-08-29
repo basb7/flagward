@@ -7,6 +7,7 @@ These are the tests design D7 lists as items 9-11: cross-tenant read/write
 isolation, the non-`User` principal guard, and the router-coverage sweep.
 """
 import pytest
+from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from core_flags.api.serializers import FeatureFlagSerializer
@@ -262,3 +263,74 @@ class TestProjectQueryParamFilter:
         response = client.get("/api/v1/environments/?project=not-a-uuid")
 
         assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestNoSuperuserBypass:
+    """
+    spec/access-control: No Superuser Bypass.
+
+    The superadmin is an operations role exercised through Django admin, not a
+    product role. The dashboard API stays scoped by membership with no
+    exceptions, because every exception is one more path to get wrong.
+
+    That guarantee currently rests on the absence of a line: no
+    `is_superuser` check exists anywhere in `tenancy/permissions.py`. Absence
+    is not something a reader notices, and it is not something a reviewer can
+    be relied on to keep noticing -- one plausible "unblock the admin" commit
+    reintroduces it silently. These tests fail the moment it comes back.
+    """
+
+    def _superuser_without_membership(self):
+        """A Django superuser holding no membership anywhere."""
+        return get_user_model().objects.create_superuser(
+            username="root", password="secret", email="root@example.com"
+        )
+
+    def test_superuser_sees_no_foreign_flags(self, environment):
+        FeatureFlag.objects.create(environment=environment, key="secret", name="Secret")
+        client = APIClient()
+        client.force_authenticate(user=self._superuser_without_membership())
+
+        response = client.get("/api/v1/flags/")
+
+        assert response.status_code == 200
+        assert response.data["results"] == []
+
+    def test_superuser_cannot_retrieve_a_foreign_flag(self, flag):
+        client = APIClient()
+        client.force_authenticate(user=self._superuser_without_membership())
+
+        response = client.get(f"/api/v1/flags/{flag.id}/")
+
+        assert response.status_code == 404
+
+    def test_superuser_cannot_write_into_a_foreign_environment(self, environment):
+        """
+        403, not 400: holding no membership anywhere, the superuser has
+        `flag.edit` nowhere, so Layer 3 denies before Layer 2's narrowed FK
+        is ever consulted. The 400 belongs to a caller who *does* hold the
+        capability somewhere and aims it at a foreign parent -- that is
+        `test_cross_tenant_fk_write_returns_400`. What matters here is that
+        both layers refuse, and neither consults `is_superuser`.
+        """
+        client = APIClient()
+        client.force_authenticate(user=self._superuser_without_membership())
+
+        response = client.post(
+            "/api/v1/flags/",
+            {"environment": str(environment.id), "key": "planted", "name": "Planted"},
+            format="json",
+        )
+
+        assert response.status_code == 403
+        assert not FeatureFlag.objects.filter(key="planted").exists()
+
+    def test_superuser_sees_no_foreign_analytics(self, environment):
+        client = APIClient()
+        client.force_authenticate(user=self._superuser_without_membership())
+
+        response = client.get("/api/v1/analytics/overview/")
+
+        assert response.status_code == 200
+        assert response.data["environments"]["total"] == 0
