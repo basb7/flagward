@@ -41,11 +41,15 @@ def clamp(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, number))
 
 
-def _scope_by_environment(queryset: QuerySet, environment_id, lookup: str) -> QuerySet:
-    """Narrow a queryset to one environment when an id was supplied."""
-    if environment_id is None:
-        return queryset
-    return queryset.filter(**{lookup: environment_id})
+def _scope(queryset: QuerySet, environments: QuerySet[Environment], lookup: str) -> QuerySet:
+    """
+    Narrow a queryset to `environments`.
+
+    `.values("pk")` is explicit rather than relying on Django's implicit pk
+    coercion for `__in`, because the caller's queryset may carry
+    `select_related`.
+    """
+    return queryset.filter(**{f"{lookup}__in": environments.values("pk")})
 
 
 def _true_rate(total: int, true_count: int) -> float | None:
@@ -55,13 +59,13 @@ def _true_rate(total: int, true_count: int) -> float | None:
     return round(true_count / total, 4)
 
 
-def build_overview(environment_id: uuid.UUID | None = None) -> dict[str, Any]:
+def build_overview(environments: QuerySet[Environment]) -> dict[str, Any]:
     """Counters for the dashboard home: flags, SDKs, evaluations and overrides."""
     now = timezone.now()
     since_24h = now - timedelta(hours=24)
     sdk_active_since = now - SDK_ACTIVE_WINDOW
 
-    flags = _scope_by_environment(FeatureFlag.objects.all(), environment_id, "environment")
+    flags = _scope(FeatureFlag.objects.all(), environments, "environment")
 
     # `enabled` is the configured state; `effective_enabled` is what SDKs serve
     # once active overrides are applied. Reporting only the former would show a
@@ -85,17 +89,13 @@ def build_overview(environment_id: uuid.UUID | None = None) -> dict[str, Any]:
         ),
     )
 
-    registrations = _scope_by_environment(
-        SDKRegistration.objects.all(), environment_id, "environment"
-    )
+    registrations = _scope(SDKRegistration.objects.all(), environments, "environment")
     sdk_counts = registrations.aggregate(
         total=Count("id"),
         active=Count("id", filter=Q(last_seen_at__gte=sdk_active_since)),
     )
 
-    evaluations = _scope_by_environment(
-        EvaluationLog.objects.all(), environment_id, "flag__environment"
-    )
+    evaluations = _scope(EvaluationLog.objects.all(), environments, "flag__environment")
     evaluation_counts = evaluations.aggregate(
         total=Count("id"),
         true_count=Count("id", filter=Q(result=True)),
@@ -103,19 +103,14 @@ def build_overview(environment_id: uuid.UUID | None = None) -> dict[str, Any]:
         true_count_24h=Count("id", filter=Q(timestamp__gte=since_24h, result=True)),
     )
 
-    overrides = _scope_by_environment(
-        FlagOverride.objects.all(), environment_id, "flag__environment"
-    )
+    overrides = _scope(FlagOverride.objects.all(), environments, "flag__environment")
     override_counts = overrides.aggregate(
         total=Count("id"),
         active=Count("id", filter=Q(cleared_at__isnull=True)),
         last_24h=Count("id", filter=Q(created_at__gte=since_24h)),
     )
 
-    if environment_id is None:
-        environments_total = Environment.objects.count()
-    else:
-        environments_total = Environment.objects.filter(id=environment_id).count()
+    environments_total = environments.count()
 
     return {
         "generated_at": now.isoformat(),
@@ -152,7 +147,7 @@ def build_overview(environment_id: uuid.UUID | None = None) -> dict[str, Any]:
 
 
 def build_evaluations_timeseries(
-    hours: int = 24, environment_id: uuid.UUID | None = None
+    environments: QuerySet[Environment], hours: int = 24
 ) -> dict[str, Any]:
     """
     Hourly evaluation counts over the last `hours` hours.
@@ -164,9 +159,9 @@ def build_evaluations_timeseries(
     current_hour = timezone.now().replace(minute=0, second=0, microsecond=0)
     first_hour = current_hour - timedelta(hours=hours - 1)
 
-    evaluations = _scope_by_environment(
+    evaluations = _scope(
         EvaluationLog.objects.filter(timestamp__gte=first_hour),
-        environment_id,
+        environments,
         "flag__environment",
     )
 
@@ -205,16 +200,16 @@ def build_evaluations_timeseries(
 
 
 def build_top_flags(
-    hours: int = 24, limit: int = 5, environment_id: uuid.UUID | None = None
+    environments: QuerySet[Environment], hours: int = 24, limit: int = 5
 ) -> dict[str, Any]:
     """Most evaluated flags in the window, with their true rate."""
     hours = clamp(hours, default=24, minimum=1, maximum=MAX_TIMESERIES_HOURS)
     limit = clamp(limit, default=5, minimum=1, maximum=MAX_TOP_FLAGS)
     since = timezone.now() - timedelta(hours=hours)
 
-    evaluations = _scope_by_environment(
+    evaluations = _scope(
         EvaluationLog.objects.filter(timestamp__gte=since),
-        environment_id,
+        environments,
         "flag__environment",
     )
 
@@ -248,12 +243,10 @@ def build_top_flags(
     }
 
 
-def build_sdk_health(environment_id: uuid.UUID | None = None) -> dict[str, Any]:
+def build_sdk_health(environments: QuerySet[Environment]) -> dict[str, Any]:
     """SDK fleet health, broken down by SDK type and version."""
     sdk_active_since = timezone.now() - SDK_ACTIVE_WINDOW
-    registrations = _scope_by_environment(
-        SDKRegistration.objects.all(), environment_id, "environment"
-    )
+    registrations = _scope(SDKRegistration.objects.all(), environments, "environment")
 
     by_type = (
         registrations.values("sdk_type")
