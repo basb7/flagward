@@ -23,11 +23,11 @@ def client():
 
 
 @pytest.fixture
-def environments():
+def environments(project):
     """Two environments, so scoping filters can be proven to actually scope."""
     return {
-        "prod": Environment.objects.create(name="Production", key="prod"),
-        "staging": Environment.objects.create(name="Staging", key="staging"),
+        "prod": Environment.objects.create(name="Production", key="prod", project=project),
+        "staging": Environment.objects.create(name="Staging", key="staging", project=project),
     }
 
 

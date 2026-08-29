@@ -20,8 +20,8 @@ from core_flags.services import FlagEvaluationService
 
 
 @pytest.fixture
-def environment():
-    return Environment.objects.create(name="Production", key="prod")
+def environment(project):
+    return Environment.objects.create(name="Production", key="prod", project=project)
 
 
 @pytest.fixture

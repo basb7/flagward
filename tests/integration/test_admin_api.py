@@ -19,10 +19,11 @@ from core_flags.models import (
 class TestEnvironmentViewSet:
     """Tests for /api/v1/environments/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
 
     def test_list_environments(self):
         """Test listing environments."""
@@ -64,10 +65,11 @@ class TestEnvironmentViewSet:
 class TestFeatureFlagViewSet:
     """Tests for /api/v1/feature-flags/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.flag = FeatureFlag.objects.create(
             environment=self.env,
             key="new-dashboard",
@@ -115,10 +117,11 @@ class TestFeatureFlagViewSet:
 class TestStrategyRuleViewSet:
     """Tests for /api/v1/strategy-rules/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.flag = FeatureFlag.objects.create(
             environment=self.env,
             key="new-dashboard",
@@ -171,10 +174,11 @@ class TestStrategyRuleViewSet:
 class TestConditionViewSet:
     """Tests for /api/v1/conditions/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.flag = FeatureFlag.objects.create(
             environment=self.env,
             key="new-dashboard",
@@ -233,10 +237,11 @@ class TestConditionViewSet:
 class TestFlagOverrideViewSet:
     """Tests for /api/v1/flag-overrides/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.flag = FeatureFlag.objects.create(
             environment=self.env,
             key="new-dashboard",

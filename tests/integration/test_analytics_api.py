@@ -23,8 +23,8 @@ def client():
 
 
 @pytest.fixture
-def environment():
-    return Environment.objects.create(name="Production", key="prod")
+def environment(project):
+    return Environment.objects.create(name="Production", key="prod", project=project)
 
 
 def _log_at(flag, result, moment, context_hash="a"):
@@ -89,8 +89,8 @@ class TestOverview:
         assert response.data["sdks"]["active"] == 0
         assert response.data["sdks"]["stale"] == 1
 
-    def test_scopes_to_one_environment(self, client, environment):
-        other = Environment.objects.create(name="Staging", key="staging")
+    def test_scopes_to_one_environment(self, client, environment, project):
+        other = Environment.objects.create(name="Staging", key="staging", project=project)
         FeatureFlag.objects.create(environment=environment, key="a", name="A")
         FeatureFlag.objects.create(environment=other, key="b", name="B")
 

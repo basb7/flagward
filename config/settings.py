@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'sdk_api',
     'analytics',
     'authentication',
+    'tenancy',
 ]
 
 if EDITION == 'enterprise':

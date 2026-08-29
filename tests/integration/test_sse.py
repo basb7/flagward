@@ -11,10 +11,11 @@ from core_flags.models import Environment
 class TestSSEStreamEndpoint:
     """Tests for GET /api/v1/sdk/stream/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
 
     def test_stream_requires_authentication(self):
         """Test that SSE stream requires authentication."""
