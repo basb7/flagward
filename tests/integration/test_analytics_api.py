@@ -11,13 +11,22 @@ from rest_framework.test import APIClient
 from analytics.services import SDK_ACTIVE_WINDOW
 from core_flags.models import Environment, FeatureFlag, FlagOverride
 from sdk_api.models import EvaluationLog, SDKRegistration, SDKType
+from tenancy.models import ProjectRole
 
 
 @pytest.fixture
-def client():
-    """Authenticated API client, as a dashboard user would be."""
+def client(project, grant):
+    """
+    Authenticated API client, granted project-level analytics visibility.
+
+    Project-level grants cascade to every environment under `project`
+    (`tenancy.scoping.environments_with`), so any environment the rest of
+    this file creates via the `project`/`environment` fixtures stays visible
+    to this client without needing a per-environment grant.
+    """
     api_client = APIClient()
     user = get_user_model().objects.create_user(username="dash", password="secret")
+    grant(user, project=project, role=ProjectRole.VIEWER)
     api_client.force_authenticate(user=user)
     return api_client
 
@@ -288,3 +297,124 @@ class TestOverviewWithOverrides:
         assert body["flags"]["overridden"] == 0
         assert body["flags"]["effective_enabled"] == 1
         assert body["overrides"]["active"] == 0
+
+
+@pytest.mark.django_db
+class TestAnalyticsScoping:
+    """
+    Spec (access-control): Analytics Scoping Is Always Bounded.
+    Design D7 test 12 / D8: `build_*` take `environments` first with no
+    default, so a global aggregate cannot be expressed.
+    """
+
+    def test_no_params_scopes_to_the_users_visible_environments(
+        self, user, grant, api_client, make_project, make_environment, make_flag
+    ):
+        visible_project = make_project(name="Visible", key="visible")
+        visible_env_a = make_environment(project=visible_project, key="a")
+        visible_env_b = make_environment(project=visible_project, key="b")
+        hidden_project = make_project(name="Hidden", key="hidden")
+        hidden_env = make_environment(project=hidden_project, key="c")
+
+        make_flag(environment=visible_env_a, key="flag-a")
+        make_flag(environment=visible_env_b, key="flag-b")
+        make_flag(environment=hidden_env, key="flag-c")
+
+        grant(user, project=visible_project, role=ProjectRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get("/api/v1/analytics/overview/")
+
+        assert response.status_code == 200
+        assert response.data["environments"]["total"] == 2
+        assert response.data["flags"]["total"] == 2
+
+    def test_environment_filter_for_an_invisible_environment_returns_404(
+        self, user, grant, api_client, project, make_project, make_environment
+    ):
+        grant(user, project=project, role=ProjectRole.VIEWER)
+        foreign_project = make_project(name="Foreign", key="foreign")
+        foreign_environment = make_environment(project=foreign_project, key="foreign-env")
+        client = api_client(user)
+
+        response = client.get(
+            f"/api/v1/analytics/overview/?environment={foreign_environment.id}"
+        )
+
+        assert response.status_code == 404
+
+    def test_malformed_environment_filter_returns_400_not_treated_as_absent(
+        self, user, grant, api_client, project
+    ):
+        grant(user, project=project, role=ProjectRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get("/api/v1/analytics/overview/?environment=not-a-uuid")
+
+        assert response.status_code == 400
+
+    def test_project_filter_for_an_invisible_project_returns_404(
+        self, user, grant, api_client, project, make_project
+    ):
+        grant(user, project=project, role=ProjectRole.VIEWER)
+        foreign_project = make_project(name="Foreign", key="foreign-2")
+        client = api_client(user)
+
+        response = client.get(f"/api/v1/analytics/overview/?project={foreign_project.id}")
+
+        assert response.status_code == 404
+
+    def test_malformed_project_filter_returns_400_not_treated_as_absent(
+        self, user, grant, api_client, project
+    ):
+        grant(user, project=project, role=ProjectRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get("/api/v1/analytics/overview/?project=not-a-uuid")
+
+        assert response.status_code == 400
+
+    def test_project_filter_scopes_to_the_projects_environments(
+        self, user, grant, api_client, make_project, make_environment, make_flag
+    ):
+        target_project = make_project(name="Target", key="target")
+        target_env = make_environment(project=target_project, key="a")
+        make_flag(environment=target_env, key="flag-a")
+        other_project = make_project(name="Other", key="other")
+        other_env = make_environment(project=other_project, key="b")
+        make_flag(environment=other_env, key="flag-b")
+
+        grant(user, project=target_project, role=ProjectRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get(f"/api/v1/analytics/overview/?project={target_project.id}")
+
+        assert response.status_code == 200
+        assert response.data["environments"]["total"] == 1
+        assert response.data["flags"]["total"] == 1
+
+    def test_user_with_no_grants_gets_200_with_zeroed_counters(self, user, api_client):
+        client = api_client(user)
+
+        response = client.get("/api/v1/analytics/overview/")
+
+        assert response.status_code == 200
+        assert response.data["environments"]["total"] == 0
+        assert response.data["flags"]["total"] == 0
+
+    def test_environments_total_reflects_scope_not_the_global_count(
+        self, user, grant, api_client, make_project, make_environment
+    ):
+        visible_project = make_project(name="Visible", key="visible-total")
+        make_environment(project=visible_project, key="a")
+        make_environment(project=visible_project, key="b")
+        for index in range(3):
+            hidden_project = make_project(name=f"Hidden{index}", key=f"hidden-{index}")
+            make_environment(project=hidden_project, key="x")
+
+        grant(user, project=visible_project, role=ProjectRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get("/api/v1/analytics/overview/")
+
+        assert response.data["environments"]["total"] == 2

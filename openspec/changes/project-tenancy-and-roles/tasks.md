@@ -333,17 +333,17 @@ Capability-Gated Actions Return 403, No Superuser Bypass, Non-User Principal Fai
 
 *Traces: Analytics Scoping Is Always Bounded (access-control).*
 
-- [ ] 5.1 RED — `tests/integration/test_analytics_api.py::test_no_params_scopes_to_visible_
+- [x] 5.1 RED — `tests/integration/test_analytics_api.py::test_no_params_scopes_to_visible_
       environments` (design D7 test 12).
-- [ ] 5.2 RED — scenarios: `?environment=<foreign>` → 404, `?environment=not-a-uuid` → 400 (and
+- [x] 5.2 RED — scenarios: `?environment=<foreign>` → 404, `?environment=not-a-uuid` → 400 (and
       the `?project=` equivalents), no-grants → 200 zeros, `environments.total` reflects scope.
-- [ ] 5.3 GREEN — `analytics/services.py`: delete `_scope_by_environment`'s none-escape; the
+- [x] 5.3 GREEN — `analytics/services.py`: delete `_scope_by_environment`'s none-escape; the
       four `build_*` functions take `environments: QuerySet[Environment]` first, no default;
       add `_scope(qs, environments, lookup)`.
-- [ ] 5.4 GREEN — `analytics/api/views.py`: replace `_environment_id` with
+- [x] 5.4 GREEN — `analytics/api/views.py`: replace `_environment_id` with
       `_scoped_environments()` (F4: malformed UUID → 400, not treated as absent); add
       `@permission_classes([IsDashboardUser])` to all four `@api_view`s.
-- [ ] 5.5 Confirm full `pytest` green.
+- [x] 5.5 Confirm full `pytest` green.
 
 ## Phase 6 — Slice 6: Org & Member Management (feature work — security cut line above this)
 
