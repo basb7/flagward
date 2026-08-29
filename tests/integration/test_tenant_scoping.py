@@ -178,6 +178,28 @@ class TestEnvironmentSerializerProjectNarrowed:
         environment.refresh_from_db()
         assert environment.project != foreign_project
 
+    def test_create_payload_without_project_is_rejected(self, api_client, user, grant, project):
+        """
+        Task 8.1 -- pins the exact contract the dashboard caller violated:
+        `environmentsApi.create` sent only `{name, key}` with no `project` at
+        all, so every environment creation from the UI has 400'd since this
+        field became required (F3/slice 4). This is the literal payload shape
+        the frontend was sending; `test_foreign_project_rejected_on_create`
+        above covers a *present-but-foreign* project, not an *absent* one.
+        """
+        grant(user, project=project, role=ProjectRole.ADMIN)
+        client = api_client(user)
+
+        response = client.post(
+            "/api/v1/environments/",
+            {"name": "Prod", "key": "prod"},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "project" in response.data
+        assert not Environment.objects.filter(key="prod").exists()
+
 
 @pytest.mark.django_db
 class TestSerializerWithoutRequestContext:
@@ -200,3 +222,43 @@ class TestSerializerWithoutRequestContext:
         # queryset, which is exactly what keeps reads working without a
         # request in context.
         assert serializer.data["environment"] == flag.environment.id
+
+
+@pytest.mark.django_db
+class TestProjectQueryParamFilter:
+    """
+    design D10, task 8.4/8.5: `?project=` on `GET /api/v1/environments/` and
+    `/api/v1/flags/`. Both tenants are made VISIBLE to the same user so this
+    test proves the filter itself narrows the response -- Layer 1 tenant
+    scoping alone would already return both without it.
+    """
+
+    def test_environments_filtered_by_project(self, api_client, user, grant, tenant_a, tenant_b):
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
+        grant(user, environment=tenant_b["environment"], role=EnvironmentRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get(f"/api/v1/environments/?project={tenant_a['project'].id}")
+
+        assert response.status_code == 200
+        ids = {row["id"] for row in response.data["results"]}
+        assert ids == {str(tenant_a["environment"].id)}
+
+    def test_flags_filtered_by_project(self, api_client, user, grant, tenant_a, tenant_b):
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
+        grant(user, environment=tenant_b["environment"], role=EnvironmentRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get(f"/api/v1/flags/?project={tenant_a['project'].id}")
+
+        assert response.status_code == 200
+        ids = {row["id"] for row in response.data["results"]}
+        assert ids == {str(tenant_a["flag"].id)}
+
+    def test_environments_malformed_project_returns_400(self, api_client, user, grant, tenant_a):
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get("/api/v1/environments/?project=not-a-uuid")
+
+        assert response.status_code == 400

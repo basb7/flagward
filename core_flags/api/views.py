@@ -27,10 +27,11 @@ from .serializers import (
 )
 
 
-class EnvironmentViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+class EnvironmentViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ModelViewSet):
     """ViewSet for Environment model."""
     queryset = Environment.objects.select_related("project")
     serializer_class = EnvironmentSerializer
+    filter_fields = ("project",)
     permission_classes = [IsDashboardUser, HasCapability]
     environment_lookup = ""  # the viewset's own model IS the environment
     capability_map = {
@@ -80,7 +81,12 @@ class FeatureFlagViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewse
         ),
     )
     serializer_class = FeatureFlagSerializer
-    filter_fields = ("environment", "is_enabled", "flag_type")
+    filter_fields = {
+        "environment": "environment",
+        "is_enabled": "is_enabled",
+        "flag_type": "flag_type",
+        "project": "environment__project",
+    }
     boolean_filter_fields = ("is_enabled",)
     permission_classes = [IsDashboardUser, HasCapability]
     environment_lookup = "environment"

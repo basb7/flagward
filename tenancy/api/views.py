@@ -31,7 +31,7 @@ from tenancy.models import (
     Project,
     ProjectMembership,
 )
-from tenancy.scoping import orgs_with, projects_with
+from tenancy.scoping import environments_with, orgs_with, projects_with
 
 from .serializers import (
     EffectiveCapabilitiesPreviewSerializer,
@@ -108,12 +108,20 @@ class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class OrganizationMembershipViewSet(
-    mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet
+    mixins.ListModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
 ):
     """
-    Update (role change) and delete for an existing `OrganizationMembership`.
+    List, update (role change), and delete for `OrganizationMembership` rows.
     Creation happens through `OrganizationViewSet.members`, which also
     creates the `User` in the same request.
+
+    Listing is scoped by `ORG_VIEW`, not `ORG_MANAGE_MEMBERS` (task 8.2/8.3):
+    seeing who else shares your organization is ordinary visibility, the
+    same capability that already scopes every other read in this app, not
+    the administration capability the mutations below require.
 
     Both mutations enforce the Organization Administration Invariant
     (spec/tenancy-model): an organization must never reach zero `ADMIN`
@@ -127,7 +135,8 @@ class OrganizationMembershipViewSet(
     serializer_class = OrganizationMembershipUpdateSerializer
 
     def get_queryset(self):
-        # Layer 1: an organization the requester cannot even see is a 404.
+        # Layer 1: an organization the requester cannot even see is a 404
+        # (or, for `list`, simply absent from the collection).
         return OrganizationMembership.objects.filter(
             organization__in=orgs_with(self.request.user, Capability.ORG_VIEW)
         )
@@ -180,26 +189,48 @@ class ProjectViewSet(viewsets.ReadOnlyModelViewSet):
         return projects_with(self.request.user, Capability.PROJECT_VIEW)
 
 
-class ProjectMembershipViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
+class ProjectMembershipViewSet(
+    mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet
+):
     """
-    Grants a `ProjectMembership` role (spec/organization-management:
-    Per-Project and Per-Environment Role Grants, tasks 6.6/6.7).
+    Lists and grants `ProjectMembership` roles (spec/organization-management:
+    Per-Project and Per-Environment Role Grants, tasks 6.6/6.7, 8.2/8.3).
 
-    Authorization is entirely `ProjectMembershipSerializer`'s
+    Creation is authorized entirely by `ProjectMembershipSerializer`'s
     `CapabilityScopedFKMixin`-narrowed `project` field (design D5, Layer 2) --
     DRF has no object on a create, so there is nothing for `HasCapability` to
-    check here.
+    check here. Listing is scoped by `PROJECT_VIEW` (task 8.2/8.3) -- ordinary
+    visibility, not the `PROJECT_MANAGE_MEMBERS` capability creation requires.
     """
 
     queryset = ProjectMembership.objects.select_related("project__organization")
     serializer_class = ProjectMembershipSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.filter(
+            project__in=projects_with(self.request.user, Capability.PROJECT_VIEW)
+        )
 
-class EnvironmentMembershipViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
-    """Grants an `EnvironmentMembership` role (see `ProjectMembershipViewSet`)."""
+
+class EnvironmentMembershipViewSet(
+    mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet
+):
+    """
+    Lists and grants `EnvironmentMembership` roles (see
+    `ProjectMembershipViewSet`). Listing is scoped by `ENVIRONMENT_VIEW`
+    (task 8.2/8.3) -- ordinary visibility, not the `PROJECT_MANAGE_MEMBERS`
+    capability creation requires on the environment's parent project.
+    """
 
     queryset = EnvironmentMembership.objects.select_related("environment__project__organization")
     serializer_class = EnvironmentMembershipSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.filter(
+            environment__in=environments_with(self.request.user, Capability.ENVIRONMENT_VIEW)
+        )
 
 
 class EffectiveCapabilitiesPreviewView(APIView):

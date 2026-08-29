@@ -187,12 +187,28 @@ export const authApi = {
     }),
 };
 
+// Projects API (read-only here: creating/moving a Project is out of scope
+// for this fix; this is only enough surface for the environment-creation
+// dialog below to pick a `project` to create into.)
+export interface Project {
+  id: string;
+  organization: string;
+  name: string;
+  key: string;
+  created_at: string;
+}
+
+export const projectsApi = {
+  list: () => request<PaginatedResponse<Project>>('/api/v1/tenancy/projects/'),
+};
+
 // Environments API
 export interface Environment {
   id: string;
   name: string;
   key: string;
   api_key: string;
+  project: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -210,7 +226,7 @@ export const environmentsApi = {
 
   get: (id: string) => request<Environment>(`/api/v1/environments/${id}/`),
 
-  create: (data: { name: string; key: string }) =>
+  create: (data: { name: string; key: string; project: string }) =>
     request<Environment>('/api/v1/environments/', {
       method: 'POST',
       body: JSON.stringify(data),
