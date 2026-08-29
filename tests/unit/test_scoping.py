@@ -15,7 +15,7 @@ from tenancy.capabilities import ALL_CAPABILITIES, Capability, resolve_capabilit
 from tenancy.models import EnvironmentRole, OrganizationRole, ProjectRole
 from tenancy.scoping import environments_with, orgs_with, projects_with
 
-_ORG_ROLES = (None, OrganizationRole.ADMIN, OrganizationRole.VIEWER)
+_ORG_ROLES = (None, OrganizationRole.ADMIN, OrganizationRole.USER)
 _PROJECT_ROLES = (None, ProjectRole.ADMIN, ProjectRole.EDITOR, ProjectRole.OPERATOR, ProjectRole.VIEWER)
 _ENV_ROLES = (None, EnvironmentRole.ADMIN, EnvironmentRole.EDITOR, EnvironmentRole.OPERATOR, EnvironmentRole.VIEWER)
 

@@ -45,16 +45,22 @@ level, each acting only on objects at or below its own level.
 
 ### Requirement: Role to Capability Grants
 
-Each level MUST define its own fixed roster of roles (`ADMIN`/`EDITOR`/
-`OPERATOR`/`VIEWER`, plus organization-only `OWNER`), each mapped to a frozen
+Each level MUST define its own fixed roster of roles, each mapped to a frozen
 set of capabilities at that level, defined in code rather than a database
-table.
+table. Project and environment use `ADMIN`/`EDITOR`/`OPERATOR`/`VIEWER`; the
+organization level uses `ADMIN`/`USER` only, matching Flagsmith's two-role
+organisation model. `USER` grants only `org.view`; everything else reaches a
+plain member through project and environment grants, or not at all.
 
-#### Scenario: Organization OWNER is exclusive
+No two roles at one level may grant identical capability sets. A role that
+distinguishes nothing still occupies the enum, the database `CheckConstraint`
+and every UI that offers it, where it can only mislead whoever is choosing.
 
-- GIVEN an organization
-- WHEN membership rows are queried
-- THEN exactly one `OrganizationMembership` holds role `OWNER`
+#### Scenario: No two roles at one level are interchangeable
+
+- GIVEN any level's role roster
+- WHEN each role's granted capability set is compared with every other's
+- THEN no two roles at that level grant the same set
 
 #### Scenario: Environment membership implies parent project visibility only
 
@@ -86,7 +92,7 @@ the empty set. No level MAY reduce a capability granted at a higher level.
 
 #### Scenario: No membership at a level grants nothing extra
 
-- GIVEN a user holds an `OrganizationMembership` with role `VIEWER`
+- GIVEN a user holds an `OrganizationMembership` with role `USER`
 - AND holds no `ProjectMembership` and no `EnvironmentMembership` for a given environment
 - WHEN effective capabilities on that environment are resolved
 - THEN only `org.view` is present
@@ -111,13 +117,25 @@ it explicitly at the environment level that needs the extra capability.
 - WHEN the admin also creates an `EnvironmentMembership` with role `VIEWER` on `production`, intending to remove edit rights there
 - THEN the resulting effective capabilities on `production` still include `flag.edit`, because union resolution only adds
 
-### Requirement: Organization Ownership Invariant
+### Requirement: Organization Administration Invariant
 
-The system MUST prevent an organization from ever having zero `OWNER`
+The system MUST prevent an organization from ever having zero `ADMIN`
 memberships.
 
-#### Scenario: Last owner cannot be removed
+`ADMIN` is the only organization role holding `org.manage_members`,
+`project.create` and `org.delete`. An organization that reaches zero admins
+can never be administered again through the API — nobody can invite, grant,
+or create a project in it — and is recoverable only through Django admin.
+The invariant is what keeps a self-service action from producing that state.
 
-- GIVEN an organization has exactly one `OWNER`
-- WHEN a request attempts to remove or demote that membership
+#### Scenario: Last admin cannot be removed
+
+- GIVEN an organization has exactly one `ADMIN`
+- WHEN a request attempts to remove that membership
+- THEN the system rejects the request
+
+#### Scenario: Last admin cannot be demoted
+
+- GIVEN an organization has exactly one `ADMIN`
+- WHEN a request attempts to change that membership's role to `USER`
 - THEN the system rejects the request

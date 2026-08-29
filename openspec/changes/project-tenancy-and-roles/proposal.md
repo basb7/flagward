@@ -173,7 +173,7 @@ Same five names, defined per level. `OWNER` is organization-only: there is one o
 organization, tied to seats and plan; a "project owner" would be a second ownership concept
 with no billing meaning.
 
-**Organization** — the base role is `VIEWER`; this is Flagsmith's "User" role, the one
+**Organization** — the base role is `USER`, named for Flagsmith's "User" role, the one
 granular permissions exist for.
 
 | Role | Grants |
