@@ -610,3 +610,132 @@ export const tenancyApi = {
   projects: () =>
     request<PaginatedResponse<Project>>('/api/v1/tenancy/projects/'),
 };
+
+export interface OrganizationMembership {
+  id: string;
+  organization: string;
+  user: number;
+  /** The member's username, carried on the row so a list can name people. */
+  username: string;
+  role: OrganizationRole;
+  created_at: string;
+}
+
+export const organizationMembersApi = {
+  /** Creates a brand-new `auth.User` and attaches it with an org role. */
+  create: (
+    organizationId: string,
+    data: {
+      username: string;
+      email?: string;
+      password: string;
+      role: OrganizationRole;
+    },
+  ) =>
+    request<OrganizationMembership>(
+      `/api/v1/tenancy/organizations/${organizationId}/members/`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+};
+
+export const organizationMembershipsApi = {
+  /**
+   * Scoped by `org.view` on the backend, across every organization the
+   * caller can see -- there is no `?organization=` filter (the viewset
+   * declares none), so callers narrow to one organization client-side.
+   */
+  list: (params: { page?: number } = {}) =>
+    request<PaginatedResponse<OrganizationMembership>>(
+      `/api/v1/tenancy/organization-memberships/${buildQuery({ page: params.page ?? 1 })}`,
+    ),
+
+  updateRole: (membershipId: string, role: OrganizationRole) =>
+    request<OrganizationMembership>(
+      `/api/v1/tenancy/organization-memberships/${membershipId}/`,
+      { method: 'PATCH', body: JSON.stringify({ role }) },
+    ),
+
+  remove: (membershipId: string) =>
+    request<void>(`/api/v1/tenancy/organization-memberships/${membershipId}/`, {
+      method: 'DELETE',
+    }),
+};
+
+export interface ProjectMembership {
+  id: string;
+  project: string;
+  user: number;
+  /** The member's username, carried on the row so a list can name people. */
+  username: string;
+  role: ProjectRole;
+  created_at: string;
+}
+
+export const projectMembershipsApi = {
+  /** Scoped by `project.view`; no `?project=` filter exists on this viewset. */
+  list: (params: { page?: number } = {}) =>
+    request<PaginatedResponse<ProjectMembership>>(
+      `/api/v1/tenancy/project-memberships/${buildQuery({ page: params.page ?? 1 })}`,
+    ),
+
+  create: (data: { project: string; user: number; role: ProjectRole }) =>
+    request<ProjectMembership>('/api/v1/tenancy/project-memberships/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+export interface EnvironmentMembership {
+  id: string;
+  environment: string;
+  user: number;
+  /** The member's username, carried on the row so a list can name people. */
+  username: string;
+  role: EnvironmentRole;
+  created_at: string;
+}
+
+export const environmentMembershipsApi = {
+  /** Scoped by `environment.view`; no `?environment=` filter exists on this viewset. */
+  list: (params: { page?: number } = {}) =>
+    request<PaginatedResponse<EnvironmentMembership>>(
+      `/api/v1/tenancy/environment-memberships/${buildQuery({ page: params.page ?? 1 })}`,
+    ),
+
+  create: (data: {
+    environment: string;
+    user: number;
+    role: EnvironmentRole;
+  }) =>
+    request<EnvironmentMembership>('/api/v1/tenancy/environment-memberships/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+/**
+ * The mitigation for the proposal's top risk (design D10): answers what a
+ * PROPOSED, unsaved set of roles would grant per environment, through the
+ * exact same `resolve_capabilities` function the backend uses to enforce.
+ * Nothing here is persisted.
+ */
+export interface EffectiveCapabilitiesPreviewRequest {
+  organization: string;
+  organization_role?: OrganizationRole | null;
+  project_roles?: Record<string, ProjectRole>;
+  environment_roles?: Record<string, EnvironmentRole>;
+}
+
+export interface EffectiveCapabilitiesPreviewEnvironment {
+  id: string;
+  key: string;
+  capabilities: string[];
+}
+
+export const effectiveCapabilitiesApi = {
+  preview: (data: EffectiveCapabilitiesPreviewRequest) =>
+    request<{ environments: EffectiveCapabilitiesPreviewEnvironment[] }>(
+      '/api/v1/tenancy/effective-capabilities/preview/',
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+};

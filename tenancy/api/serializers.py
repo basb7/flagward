@@ -44,9 +44,15 @@ class OrganizationMembershipSerializer(serializers.ModelSerializer):
     creation payload, never as writable FKs on this serializer, so no
     `CapabilityScopedFKMixin` narrowing is needed for this shape.
     """
+    # The screen listing these rows has to name people, and a bare `user` pk
+    # names nobody. Read-only, sourced from the already-related user, and no
+    # wider than the row itself: seeing the username of someone in an
+    # organization you can already list is the point of a members screen.
+    username = serializers.CharField(source="user.username", read_only=True)
+
     class Meta:
         model = OrganizationMembership
-        fields = ['id', 'organization', 'user', 'role', 'created_at']
+        fields = ['id', 'organization', 'user', 'username', 'role', 'created_at']
         read_only_fields = fields
 
 
@@ -96,9 +102,15 @@ class ProjectMembershipSerializer(CapabilityScopedFKMixin, serializers.ModelSeri
         "project": (Capability.PROJECT_MANAGE_MEMBERS, projects_with),
     }
 
+    # The screen listing these rows has to name people, and a bare `user` pk
+    # names nobody. Read-only, sourced from the already-related user, and no
+    # wider than the row itself: seeing the username of someone in an
+    # organization you can already list is the point of a members screen.
+    username = serializers.CharField(source="user.username", read_only=True)
+
     class Meta:
         model = ProjectMembership
-        fields = ['id', 'project', 'user', 'role', 'created_at']
+        fields = ['id', 'project', 'user', 'username', 'role', 'created_at']
         read_only_fields = ['id', 'created_at']
 
     def validate(self, attrs):
@@ -125,9 +137,15 @@ class EnvironmentMembershipSerializer(CapabilityScopedFKMixin, serializers.Model
         "environment": (Capability.PROJECT_MANAGE_MEMBERS, environments_with),
     }
 
+    # The screen listing these rows has to name people, and a bare `user` pk
+    # names nobody. Read-only, sourced from the already-related user, and no
+    # wider than the row itself: seeing the username of someone in an
+    # organization you can already list is the point of a members screen.
+    username = serializers.CharField(source="user.username", read_only=True)
+
     class Meta:
         model = EnvironmentMembership
-        fields = ['id', 'environment', 'user', 'role', 'created_at']
+        fields = ['id', 'environment', 'user', 'username', 'role', 'created_at']
         read_only_fields = ['id', 'created_at']
 
     def validate(self, attrs):
