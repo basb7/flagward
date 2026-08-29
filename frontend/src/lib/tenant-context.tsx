@@ -11,15 +11,25 @@ import {
 import { type Organization, type Project, tenancyApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
+const CURRENT_ORGANIZATION_STORAGE_KEY = 'flagward.currentOrganizationId';
 const CURRENT_PROJECT_STORAGE_KEY = 'flagward.currentProjectId';
 
 interface TenantContextType {
   organizations: Organization[];
+  /** Projects belonging to `currentOrganization` only -- never a foreign one. */
   projects: Project[];
   currentOrganization: Organization | null;
   currentProject: Project | null;
+  /**
+   * Switches organizations. The current project moves to the new
+   * organization's first project, or to none, so the UI never shows one
+   * organization's data under another's name.
+   */
+  setCurrentOrganization: (organization: Organization | null) => void;
   setCurrentProject: (project: Project | null) => void;
   isLoading: boolean;
+  /** Re-fetches organizations and projects, e.g. after creating one. */
+  refresh: () => Promise<void>;
 }
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
@@ -27,7 +37,10 @@ const TenantContext = createContext<TenantContextType | undefined>(undefined);
 export function TenantProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [currentOrganizationId, setCurrentOrganizationId] = useState<
+    string | null
+  >(null);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -38,16 +51,36 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         tenancyApi.projects(),
       ]);
       setOrganizations(organizationsRes.results);
-      setProjects(projectsRes.results);
+      setAllProjects(projectsRes.results);
 
-      const stored = window.localStorage.getItem(CURRENT_PROJECT_STORAGE_KEY);
-      const restored = projectsRes.results.find(
-        (project) => project.id === stored,
+      const storedOrganizationId = window.localStorage.getItem(
+        CURRENT_ORGANIZATION_STORAGE_KEY,
       );
-      setCurrentProjectId(restored?.id ?? projectsRes.results[0]?.id ?? null);
+      const restoredOrganization =
+        organizationsRes.results.find(
+          (organization) => organization.id === storedOrganizationId,
+        ) ?? organizationsRes.results[0];
+      const resolvedOrganizationId = restoredOrganization?.id ?? null;
+      setCurrentOrganizationId(resolvedOrganizationId);
+
+      // A project only counts as restorable when it still belongs to the
+      // organization we just resolved -- otherwise a stale localStorage
+      // project id would show one organization's data under another's name.
+      const storedProjectId = window.localStorage.getItem(
+        CURRENT_PROJECT_STORAGE_KEY,
+      );
+      const projectsInOrganization = projectsRes.results.filter(
+        (project) => project.organization === resolvedOrganizationId,
+      );
+      const restoredProject =
+        projectsInOrganization.find(
+          (project) => project.id === storedProjectId,
+        ) ?? projectsInOrganization[0];
+      setCurrentProjectId(restoredProject?.id ?? null);
     } catch {
       setOrganizations([]);
-      setProjects([]);
+      setAllProjects([]);
+      setCurrentOrganizationId(null);
       setCurrentProjectId(null);
     } finally {
       setIsLoading(false);
@@ -60,7 +93,8 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       // org/project from a previous session never leaks into the next one's
       // first render.
       setOrganizations([]);
-      setProjects([]);
+      setAllProjects([]);
+      setCurrentOrganizationId(null);
       setCurrentProjectId(null);
       setIsLoading(false);
       return;
@@ -69,23 +103,31 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     load();
   }, [user, load]);
 
-  const currentProject = useMemo(
-    () => projects.find((project) => project.id === currentProjectId) ?? null,
-    [projects, currentProjectId],
+  const currentOrganization = useMemo(
+    () =>
+      organizations.find(
+        (organization) => organization.id === currentOrganizationId,
+      ) ?? null,
+    [organizations, currentOrganizationId],
   );
 
-  const currentOrganization = useMemo(() => {
-    if (currentProject) {
-      return (
-        organizations.find(
-          (organization) => organization.id === currentProject.organization,
-        ) ?? null
-      );
-    }
-    return organizations[0] ?? null;
-  }, [organizations, currentProject]);
+  const projects = useMemo(
+    () =>
+      currentOrganization
+        ? allProjects.filter(
+            (project) => project.organization === currentOrganization.id,
+          )
+        : [],
+    [allProjects, currentOrganization],
+  );
 
-  const setCurrentProject = useCallback((project: Project | null) => {
+  const currentProject = useMemo(
+    () =>
+      allProjects.find((project) => project.id === currentProjectId) ?? null,
+    [allProjects, currentProjectId],
+  );
+
+  const persistProject = useCallback((project: Project | null) => {
     setCurrentProjectId(project?.id ?? null);
     if (project) {
       window.localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, project.id);
@@ -94,6 +136,38 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const setCurrentProject = useCallback(
+    (project: Project | null) => {
+      persistProject(project);
+    },
+    [persistProject],
+  );
+
+  const setCurrentOrganization = useCallback(
+    (organization: Organization | null) => {
+      setCurrentOrganizationId(organization?.id ?? null);
+      if (organization) {
+        window.localStorage.setItem(
+          CURRENT_ORGANIZATION_STORAGE_KEY,
+          organization.id,
+        );
+      } else {
+        window.localStorage.removeItem(CURRENT_ORGANIZATION_STORAGE_KEY);
+      }
+
+      // The current project belongs to the old organization: move to the new
+      // organization's first project, or to none, rather than leaving a
+      // foreign project selected.
+      const nextProject = organization
+        ? (allProjects.find(
+            (project) => project.organization === organization.id,
+          ) ?? null)
+        : null;
+      persistProject(nextProject);
+    },
+    [allProjects, persistProject],
+  );
+
   return (
     <TenantContext.Provider
       value={{
@@ -101,8 +175,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         projects,
         currentOrganization,
         currentProject,
+        setCurrentOrganization,
         setCurrentProject,
         isLoading,
+        refresh: load,
       }}
     >
       {children}

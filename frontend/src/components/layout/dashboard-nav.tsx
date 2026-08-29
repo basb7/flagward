@@ -6,11 +6,14 @@ import {
   Layers,
   LayoutGrid,
   LogOut,
+  Plus,
   User,
   Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { CreateOrganizationDialog } from '@/components/dashboard/create-organization-dialog';
+import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -32,7 +35,15 @@ const TABS = [
 
 export function DashboardNav() {
   const { user, logout } = useAuth();
-  const { projects, currentProject, setCurrentProject } = useTenant();
+  const {
+    organizations,
+    projects,
+    currentProject,
+    currentOrganization,
+    setCurrentOrganization,
+    setCurrentProject,
+    refresh,
+  } = useTenant();
   const pathname = usePathname();
 
   const isActive = (tab: (typeof TABS)[number]) =>
@@ -54,6 +65,57 @@ export function DashboardNav() {
           </Link>
 
           <div className="flex items-center gap-2">
+            {organizations.length > 1 ? (
+              <select
+                aria-label="Organization"
+                className="h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground"
+                value={currentOrganization?.id ?? ''}
+                onChange={(event) => {
+                  const organization =
+                    organizations.find(
+                      (item) => item.id === event.target.value,
+                    ) ?? null;
+                  setCurrentOrganization(organization);
+                }}
+              >
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            ) : currentOrganization ? (
+              <span
+                role="status"
+                aria-label="Organization"
+                className="flex h-8 items-center rounded-lg border border-border bg-card px-2 text-sm text-foreground"
+              >
+                {currentOrganization.name}
+              </span>
+            ) : null}
+
+            <CreateOrganizationDialog
+              triggerButton={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground hover:text-foreground"
+                />
+              }
+              triggerContent={
+                <>
+                  <Plus className="size-4" />
+                  <span className="sr-only">New organization</span>
+                </>
+              }
+              onCreated={async (organization) => {
+                await refresh();
+                setCurrentOrganization(organization);
+              }}
+            />
+
+            <span aria-hidden="true" className="h-5 w-px bg-border" />
+
             {projects.length > 0 ? (
               <select
                 aria-label="Project"
@@ -72,6 +134,29 @@ export function DashboardNav() {
                   </option>
                 ))}
               </select>
+            ) : null}
+
+            {currentOrganization ? (
+              <CreateProjectDialog
+                organizationId={currentOrganization.id}
+                triggerButton={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-foreground"
+                  />
+                }
+                triggerContent={
+                  <>
+                    <Plus className="size-4" />
+                    <span className="sr-only">New project</span>
+                  </>
+                }
+                onCreated={(project) => {
+                  refresh();
+                  setCurrentProject(project);
+                }}
+              />
             ) : null}
 
             <DropdownMenu>

@@ -1,10 +1,21 @@
 'use client';
 
-import { Activity, Flag, Layers, ShieldAlert, Zap } from 'lucide-react';
+import {
+  Activity,
+  Building2,
+  Flag,
+  Layers,
+  Plus,
+  ShieldAlert,
+  Zap,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { EvaluationsChart } from '@/components/charts/evaluations-chart';
+import { CreateOrganizationDialog } from '@/components/dashboard/create-organization-dialog';
+import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -39,7 +50,15 @@ function formatRate(rate: number | null) {
 
 export default function DashboardPage() {
   const { error: showError } = useToast();
-  const { currentProject } = useTenant();
+  const {
+    organizations,
+    projects,
+    currentOrganization,
+    currentProject,
+    setCurrentOrganization,
+    isLoading: isTenantLoading,
+    refresh,
+  } = useTenant();
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [environment, setEnvironment] = useState('');
   const [hours, setHours] = useState<number>(24);
@@ -94,6 +113,66 @@ export default function DashboardPage() {
   useEffect(() => {
     loadAnalytics();
   }, [loadAnalytics]);
+
+  if (isTenantLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (organizations.length === 0) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <EmptyState
+          icon={Building2}
+          title="Create your organization"
+          description="Everything in Flagward -- projects, environments and flags -- lives inside an organization. Name yours to get started."
+          action={
+            <CreateOrganizationDialog
+              triggerButton={<Button />}
+              triggerContent={
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create organization
+                </>
+              }
+              onCreated={async (organization) => {
+                await refresh();
+                setCurrentOrganization(organization);
+              }}
+            />
+          }
+        />
+      </div>
+    );
+  }
+
+  if (currentOrganization && projects.length === 0) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <EmptyState
+          icon={Layers}
+          title="Create your first project"
+          description="Environments, flags and API keys all live inside a project."
+          action={
+            <CreateProjectDialog
+              organizationId={currentOrganization.id}
+              triggerButton={<Button />}
+              triggerContent={
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create project
+                </>
+              }
+              onCreated={() => refresh()}
+            />
+          }
+        />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

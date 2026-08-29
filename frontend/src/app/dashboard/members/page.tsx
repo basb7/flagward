@@ -409,11 +409,27 @@ export default function MembersPage() {
                   <Input
                     id="member-password"
                     type="password"
+                    aria-describedby="member-password-hint"
                     value={newMember.password}
                     onChange={(e) =>
                       setNewMember({ ...newMember, password: e.target.value })
                     }
                   />
+                  {/*
+                    The Add member button stays disabled until this is long
+                    enough. Saying so beats a control that refuses to enable
+                    and never explains why. The server checks more than length
+                    -- common and all-numeric passwords are rejected too -- and
+                    those come back as an error rather than being predicted
+                    here, so one policy lives in one place.
+                  */}
+                  <p
+                    id="member-password-hint"
+                    className="text-xs text-muted-foreground"
+                  >
+                    At least 8 characters. Avoid common or all-numeric
+                    passwords.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="member-role">Organization role</Label>

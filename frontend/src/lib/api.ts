@@ -607,8 +607,20 @@ export const tenancyApi = {
   organizations: () =>
     request<PaginatedResponse<Organization>>('/api/v1/tenancy/organizations/'),
 
+  createOrganization: (data: { name: string }) =>
+    request<Organization>('/api/v1/tenancy/organizations/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   projects: () =>
     request<PaginatedResponse<Project>>('/api/v1/tenancy/projects/'),
+
+  createProject: (data: { organization: string; name: string; key: string }) =>
+    request<Project>('/api/v1/tenancy/projects/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 export interface OrganizationMembership {
