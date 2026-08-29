@@ -4,12 +4,14 @@ Authentication API endpoints with httpOnly cookies.
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from tenancy.models import Organization, OrganizationMembership, OrganizationRole
 from tenancy.permissions import IsDashboardUser
 
 
@@ -134,12 +136,20 @@ def register(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Create user
-    user = User.objects.create_user(
-        username=username,
-        email=email,
-        password=password,
-    )
+    # Create the user and auto-provision an organization the user administers
+    # (spec/organization-management: Self-Registration Auto-Provisions an
+    # Organization). One transaction: a user must never exist without the
+    # organization membership that makes it navigable.
+    with transaction.atomic():
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+        )
+        organization = Organization.objects.create(name=f"{username}'s Organization")
+        OrganizationMembership.objects.create(
+            organization=organization, user=user, role=OrganizationRole.ADMIN
+        )
 
     # Generate tokens
     refresh = RefreshToken.for_user(user)

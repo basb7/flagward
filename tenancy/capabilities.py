@@ -71,7 +71,7 @@ _ORG_ADMIN_CAPS: frozenset[str] = ALL_CAPABILITIES
 
 ORG_ROLE_CAPS: dict[str, frozenset[str]] = {
     OrganizationRole.ADMIN: _ORG_ADMIN_CAPS,
-    OrganizationRole.VIEWER: frozenset({Capability.ORG_VIEW}),
+    OrganizationRole.USER: frozenset({Capability.ORG_VIEW}),
 }
 
 _PROJECT_VIEWER_CAPS = frozenset(

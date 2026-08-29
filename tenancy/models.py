@@ -24,9 +24,16 @@ class OrganizationRole(models.TextChoices):
     cascades with it. There is deliberately no role between ADMIN and VIEWER —
     an earlier OWNER role granted exactly what ADMIN grants, and a role that
     distinguishes nothing can only mislead whoever assigns it.
+
+    USER is a plain member. It grants only ORG_VIEW -- enough to know which
+    organization you belong to and navigate into it -- and says nothing about
+    the projects inside, which arrive through project and environment grants
+    or not at all. It is named USER rather than VIEWER because "viewer" at
+    this level reads as "can view what the organization contains", which is
+    the opposite of what it means.
     """
     ADMIN = "ADMIN", "Admin"
-    VIEWER = "VIEWER", "Viewer"
+    USER = "USER", "User"
 
 
 class ProjectRole(models.TextChoices):

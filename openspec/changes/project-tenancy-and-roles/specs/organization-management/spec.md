@@ -10,16 +10,16 @@ per-environment role grants, and seat accounting against the plan.
 ### Requirement: Self-Registration Auto-Provisions an Organization
 
 Registration MUST remain open. Registering a new user MUST automatically
-create exactly one `Organization` with that user as its `OWNER`.
+create exactly one `Organization` with that user as its `ADMIN`.
 
 #### Scenario: New registration creates an organization
 
 - GIVEN no account exists for a given email
 - WHEN the user completes registration
 - THEN exactly one `Organization` is created
-- AND the new user holds an `OrganizationMembership` with role `OWNER` in it
+- AND the new user holds an `OrganizationMembership` with role `ADMIN` in it
 
-### Requirement: Owner/Admin Creates and Attaches Users
+### Requirement: An Admin Creates and Attaches Users
 
 A member holding `org.manage_members` MUST be able to create a new user
 account and attach it to the organization with an organization role. This
@@ -28,12 +28,12 @@ consumes one seat.
 #### Scenario: Admin creates a member
 
 - GIVEN an organization below its seat limit
-- WHEN an `ADMIN` creates a new user and assigns organization role `VIEWER`
+- WHEN an `ADMIN` creates a new user and assigns organization role `USER`
 - THEN a new `auth.User` and a new `OrganizationMembership` are created
 
 #### Scenario: Non-privileged member cannot create users
 
-- GIVEN a user holds organization role `VIEWER`
+- GIVEN a user holds organization role `USER`
 - WHEN that user attempts to create a new organization member
 - THEN the system returns 403
 
@@ -66,7 +66,7 @@ that organization MUST be rejected.
 ### Requirement: Seat Accounting Against the Plan
 
 One `OrganizationMembership` row equals one consumed seat, including the
-`OWNER`. `COMMUNITY` plan has unlimited seats. Any other plan MUST reject the
+organization's own `ADMIN`. `COMMUNITY` plan has unlimited seats. Any other plan MUST reject the
 membership row that would exceed `max_seats(plan)`.
 
 #### Scenario: Under the limit

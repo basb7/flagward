@@ -26,7 +26,7 @@ _ORG_ADMIN = frozenset(ALL_CAPABILITIES)  # org ADMIN dominates every level; see
 _ORG_CAPS = {
     None: frozenset(),
     OrganizationRole.ADMIN: _ORG_ADMIN,
-    OrganizationRole.VIEWER: frozenset({Capability.ORG_VIEW}),
+    OrganizationRole.USER: frozenset({Capability.ORG_VIEW}),
 }
 
 _PROJECT_VIEWER = frozenset(
@@ -62,7 +62,7 @@ _ENV_CAPS = {
     EnvironmentRole.VIEWER: _ENV_VIEWER,
 }
 
-_ORG_ROLES = (None, OrganizationRole.ADMIN, OrganizationRole.VIEWER)
+_ORG_ROLES = (None, OrganizationRole.ADMIN, OrganizationRole.USER)
 _PROJECT_ROLES = (None, ProjectRole.ADMIN, ProjectRole.EDITOR, ProjectRole.OPERATOR, ProjectRole.VIEWER)
 _ENV_ROLES = (None, EnvironmentRole.ADMIN, EnvironmentRole.EDITOR, EnvironmentRole.OPERATOR, EnvironmentRole.VIEWER)
 
@@ -121,7 +121,7 @@ def test_narrow_implication_project_view_only():
 
 def test_no_membership_at_a_level_grants_nothing_extra():
     """spec: No membership at a level grants nothing extra."""
-    caps = resolve_capabilities(OrganizationRole.VIEWER, None, None)
+    caps = resolve_capabilities(OrganizationRole.USER, None, None)
 
     assert caps == frozenset({Capability.ORG_VIEW})
 
@@ -180,3 +180,18 @@ def test_no_two_roles_at_one_level_are_interchangeable():
             assert grants[role_a] != grants[role_b], (
                 f"{level} roles {role_a} and {role_b} grant identical capabilities"
             )
+
+
+def test_organization_roster_is_admin_and_user():
+    """
+    The organization level has exactly two roles, matching Flagsmith's
+    organisation model: an administrator with full access, and a plain member
+    whose reach comes entirely from project and environment grants below.
+
+    The plain role is USER rather than VIEWER on purpose. VIEWER reads as
+    "can view things", which at the organization level would suggest access
+    to what the organization contains. It grants only ORG_VIEW -- enough to
+    know which organization you belong to and navigate into it -- and nothing
+    about the projects inside, which arrive one level down or not at all.
+    """
+    assert set(OrganizationRole.values) == {"ADMIN", "USER"}

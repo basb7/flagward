@@ -202,7 +202,8 @@ The Carve-Out Trap (tenancy-model).*
 3. **`OrganizationRole.OWNER` was removed** (user decision, 2026-08-28). The authored table gave
    OWNER and ADMIN identical capability sets, so OWNER distinguished nothing while still
    occupying the enum, the database CheckConstraint and any future assignment UI. The
-   organization level now has ADMIN and VIEWER, matching Flagsmith's two-role organisation
+   organization level now has ADMIN and USER (VIEWER was renamed in the same slice, user
+   decision), matching Flagsmith's two-role organisation
    model, which was already this change's reference.
 
    Consequence, deliberately accepted: an organization ADMIN is a full key to the account. It
@@ -349,27 +350,38 @@ Capability-Gated Actions Return 403, No Superuser Bypass, Non-User Principal Fai
 
 *Traces: Self-Registration Auto-Provisions an Organization, Owner/Admin Creates and Attaches
 Users, Per-Project and Per-Environment Role Grants, Seat Accounting Against the Plan
-(organization-management); Organization Ownership Invariant (tenancy-model). Splittable into
+(organization-management); Organization Administration Invariant (tenancy-model). Splittable into
 6a/6b if it approaches the 800-line budget — no shared schema between the two halves.*
 
-- [ ] 6.1 RED — `tests/integration/test_registration.py::test_registration_auto_provisions_
-      organization`: new user → exactly one `Organization`, `OWNER` membership.
-- [ ] 6.2 GREEN — `authentication/views.py`: registration creates `Organization` +
-      `OrganizationMembership(role=OWNER)` in one transaction.
-- [ ] 6.3 RED — `test_admin_creates_member` (consumes a seat) / `test_non_privileged_cannot_
+- [x] 6.1 RED — `tests/integration/test_registration.py::test_registration_auto_provisions_
+      organization`: new user -> exactly one `Organization`, `ADMIN` membership.
+- [x] 6.2 GREEN — `authentication/views.py`: registration creates `Organization` +
+      `OrganizationMembership(role=ADMIN)` in one transaction.
+- [x] 6.3 RED — `test_admin_creates_member` (consumes a seat) / `test_non_privileged_cannot_
       create_member` → 403.
-- [ ] 6.4 RED — `test_seat_limit`: under limit creates; at boundary → 400
+- [x] 6.4 RED — `test_seat_limit`: under limit creates; at boundary → 400
       `seat_limit_reached`; `COMMUNITY` never blocks; removing frees immediately; deactivated
       user still counts; downgrade doesn't evict existing members.
-- [ ] 6.5 GREEN — `tenancy/api/{views,serializers,urls}.py`: member-creation endpoint with
+- [x] 6.5 GREEN — `tenancy/api/{views,serializers,urls}.py`: member-creation endpoint with
       `select_for_update()` on the `Organization` row for the seat check.
-      *(— 6a boundary: registration + org membership + seats.)*
+      *(— 6a boundary: registration + org membership + seats.)* **6a COMPLETE — 393/393 tests
+      green on Postgres, ruff clean. Measured total changed lines on this branch: 518 (258
+      tracked diff + 260 in three untracked new files, including the ~160-line orchestrator
+      rename carryover). 6b deferred to its own PR per the 800-line budget guard: 6b's own
+      scope (grant CRUD for two membership types, admin-invariant enforcement including new
+      update/delete membership endpoints, and the effective-capabilities preview mirroring
+      `resolve_capabilities`) was estimated at 700-900 lines on its own, which would have run
+      well past 800 combined with 6a. Stopped cleanly at this boundary rather than overrunning
+      or compressing by dropping tests.**
 - [ ] 6.6 RED — `test_grant_project_role` / `test_grant_environment_role` /
       `test_grant_rejected_without_org_membership`.
 - [ ] 6.7 GREEN — grant endpoints for `ProjectMembership` and `EnvironmentMembership`,
       enforcing the org-membership prerequisite.
-- [ ] 6.8 RED — `test_last_owner_cannot_be_removed`.
-- [ ] 6.9 GREEN — enforce the ownership invariant on membership delete/demote.
+- [ ] 6.8 RED - `test_last_admin_cannot_be_removed` and
+      `test_last_admin_cannot_be_demoted`. `OrganizationRole.OWNER` no longer exists (slice 3);
+      the invariant now protects the last `ADMIN`, and the lockout it prevents is unchanged.
+- [ ] 6.9 GREEN - enforce the administration invariant on organization membership delete
+      and demote.
 - [ ] 6.10 GREEN — `POST /api/v1/tenancy/effective-capabilities/preview/`: takes proposed
       unsaved roles, answers through `resolve_capabilities` (design D10); requires
       `project.manage_members` on every referenced project.

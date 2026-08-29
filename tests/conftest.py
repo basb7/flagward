@@ -130,3 +130,15 @@ def assert_membership_never_joined():
         assert queryset.query.distinct is False
 
     return _assert
+
+
+@pytest.fixture(autouse=True)
+def _fast_password_hashing(settings):
+    """
+    Swap the production hasher for a cheap one across the suite.
+
+    Django's default PBKDF2 hasher is deliberately slow, which is right in
+    production and pure cost in tests: nothing here asserts anything about how
+    a password is stored, only that authentication succeeds or does not.
+    """
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]

@@ -158,7 +158,7 @@ Both cross-app FKs use **lazy string references** (`"tenancy.Project"`,
 `"core_flags.Environment"`), so neither `models.py` imports the other and there is no Python
 import cycle to work around.
 
-**Three role enums, not one.** `OrganizationRole(OWNER, ADMIN, VIEWER)`,
+**Three role enums, not one.** `OrganizationRole(ADMIN, USER)`,
 `ProjectRole(ADMIN, EDITOR, OPERATOR, VIEWER)`, `EnvironmentRole(ADMIN, EDITOR, OPERATOR,
 VIEWER)`. A single shared enum would let the database hold `role="OWNER"` on a
 `ProjectMembership`, which the capability map maps to ∅ — a grant that looks maximal in the
@@ -697,7 +697,7 @@ implies you can uncheck, and under union you cannot.
 
 ```
 POST /api/v1/tenancy/effective-capabilities/preview/
-{ "user": 7, "organization": "...", "organization_role": "VIEWER",
+{ "user": 7, "organization": "...", "organization_role": "USER",
   "project_roles":     { "<project-uuid>": "VIEWER" },
   "environment_roles": { "<staging-uuid>": "EDITOR", "<prod-uuid>": "OPERATOR" } }
 
