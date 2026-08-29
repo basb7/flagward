@@ -148,28 +148,70 @@ design D7 — splitting them leaves CI red between merges.*
 *Traces: Capability Catalogue by Level, Role to Capability Grants, Union Role Resolution,
 The Carve-Out Trap (tenancy-model).*
 
-- [ ] 3.1 RED — `tests/unit/test_capabilities.py::test_resolve_capabilities_matrix`: 100 role
+- [x] 3.1 RED — `tests/unit/test_capabilities.py::test_resolve_capabilities_matrix`: 100 role
       tuples (4 org × 5 project × 5 env, incl. "no membership") × full 15-capability assertion
-      (design D7 test 1). Fails: `capabilities.py` does not exist.
-- [ ] 3.2 RED — `test_union_org_admin_not_narrowed`: org `ADMIN` + project `VIEWER` still holds
+      (design D7 test 1). Fails: `capabilities.py` does not exist. **Correction against
+      design/D7/D3**: the spec's Capability Catalogue by Level table (`specs/tenancy-model/
+      spec.md`) enumerates **16** distinct capability strings (5 org + 6 project + 5
+      environment), not 15 — `org.view, org.manage_members, org.manage, org.delete,
+      project.create, project.view, project.manage, project.manage_members, project.delete,
+      environment.create, environment.delete, environment.view, environment.manage, flag.edit,
+      override.manage, analytics.view`. Implemented all 16, since the spec is the behavioral
+      authority per this session's instructions; the 100-tuple matrix count (4×5×5) is
+      unaffected since that comes from role counts, not capability counts. See Deviations.
+- [x] 3.2 RED — `test_union_org_admin_not_narrowed`: org `ADMIN` + project `VIEWER` still holds
       `flag.edit` (design D7 test 2).
-- [ ] 3.3 RED — `test_narrow_implication_project_view_only`: env membership alone yields exactly
+- [x] 3.3 RED — `test_narrow_implication_project_view_only`: env membership alone yields exactly
       `project.view` at project level and nothing else (design D7 test 3).
-- [ ] 3.4 GREEN — create `tenancy/capabilities.py`: 15 capability constants,
+- [x] 3.4 GREEN — create `tenancy/capabilities.py`: 16 capability constants (see 3.1 correction),
       `ORG_ROLE_CAPS`/`PROJECT_ROLE_CAPS`/`ENV_ROLE_CAPS`, inverted `*_ROLES_GRANTING` maps,
-      `resolve_capabilities()`, `max_seats()`. Unknown capability string raises `ValueError`.
-- [ ] 3.5 RED — `tests/unit/test_scoping.py::test_environments_with_matches_resolve_capabilities`:
+      `resolve_capabilities()`, `max_seats()`. Unknown capability string raises `ValueError`
+      (`validate_capability`). **Note**: neither design.md nor the specs give the exact
+      role→capability grant tables (only example scenarios); this task authored a concrete,
+      internally-consistent policy from those scenarios plus the `ADMIN ⊇ EDITOR ⊇ OPERATOR ⊇
+      VIEWER` cumulative-role convention implied throughout. See Deviations for the exact tables.
+- [x] 3.5 RED — `tests/unit/test_scoping.py::test_environments_with_matches_resolve_capabilities`:
       the consistency invariant across the 100-tuple matrix (design D7 test 4). Fails:
       `scoping.py` does not exist.
-- [ ] 3.6 RED — `test_no_membership_join`: `assert_membership_never_joined` over the 3 helpers ×
+- [x] 3.6 RED — `test_no_membership_join`: `assert_membership_never_joined` over the 3 helpers ×
       every capability (design D7 test 5).
-- [ ] 3.7 RED — `test_no_fan_out`: triple membership (org+project+env) on one environment, same
+- [x] 3.7 RED — `test_no_fan_out`: triple membership (org+project+env) on one environment, same
       capability, `environments_with(...).count() == 1` (design D7 test 6).
-- [ ] 3.8 GREEN — create `tenancy/scoping.py`: `orgs_with`, `projects_with`,
-      `environments_with`, `capabilities_for`, all join-free (design D4).
-- [ ] 3.9 GREEN — create `tenancy/permissions.py`: `IsDashboardUser`, `HasCapability`,
+- [x] 3.8 GREEN — create `tenancy/scoping.py`: `orgs_with`, `projects_with`,
+      `environments_with`, `capabilities_for`, all join-free (design D4). Added
+      `test_project_view_narrow_special_case` to `test_scoping.py` to cover D4's documented
+      asymmetry directly, and `test_unknown_capability_raises_on_all_three_helpers` per the
+      Testing Strategy table's `ValueError` requirement (not separately numbered in tasks.md,
+      but required by this session's constraints and design's Testing Strategy section).
+- [x] 3.9 GREEN — create `tenancy/permissions.py`: `IsDashboardUser`, `HasCapability`,
       `TenantScopedViewSetMixin` — unwired, unit-tested standalone, not yet attached to a
-      viewset.
+      viewset. Added `tests/unit/test_permissions.py` (13 tests) — not explicitly listed as a
+      RED task in this phase, but Strict TDD Mode requires a failing test before any production
+      code, and the task description itself says "unit-tested standalone".
+
+### Slice 3 deviations from the planning artifacts
+
+1. **16 capabilities, not 15.** `design.md` and task 3.4 both say 15. The Capability Catalogue
+   in `specs/tenancy-model/spec.md` lists 16 distinct strings (5 org + 6 project + 5
+   environment). The spec is the behavioral authority, so 16 were implemented.
+
+2. **The role -> capability grant table was never specified.** Neither `design.md` nor the specs
+   define it; they give scenario examples only. It was authored during implementation and then
+   reviewed with the user, which surfaced (3).
+
+3. **`OrganizationRole.OWNER` was removed** (user decision, 2026-08-28). The authored table gave
+   OWNER and ADMIN identical capability sets, so OWNER distinguished nothing while still
+   occupying the enum, the database CheckConstraint and any future assignment UI. The
+   organization level now has ADMIN and VIEWER, matching Flagsmith's two-role organisation
+   model, which was already this change's reference.
+
+   Consequence, deliberately accepted: an organization ADMIN is a full key to the account. It
+   holds `org.delete`, and `on_delete=CASCADE` carries every project, environment, flag, rule
+   and override with it. **The members UI (slice 7) must warn when assigning it.**
+
+   Guarded by `test_no_two_roles_at_one_level_are_interchangeable`, which asserts at all three
+   levels that no two roles grant identical capabilities, so the class of defect cannot return
+   silently. Migration `tenancy/0002_drop_organization_owner_role` replaces the CheckConstraint.
 
 ## Phase 4 — Slice 4: Enforcement Wiring (9 viewsets, 5 serializers)
 

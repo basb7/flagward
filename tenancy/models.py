@@ -16,8 +16,15 @@ class Plan(models.TextChoices):
 
 
 class OrganizationRole(models.TextChoices):
-    """Roles at the organization level."""
-    OWNER = "OWNER", "Owner"
+    """
+    Roles at the organization level.
+
+    ADMIN is a full key to the account, not a day-to-day administration role:
+    it can delete the organization, and every project, environment and flag
+    cascades with it. There is deliberately no role between ADMIN and VIEWER —
+    an earlier OWNER role granted exactly what ADMIN grants, and a role that
+    distinguishes nothing can only mislead whoever assigns it.
+    """
     ADMIN = "ADMIN", "Admin"
     VIEWER = "VIEWER", "Viewer"
 
