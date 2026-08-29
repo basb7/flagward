@@ -219,40 +219,115 @@ The Carve-Out Trap (tenancy-model).*
 Capability-Gated Actions Return 403, No Superuser Bypass, Non-User Principal Fails Closed
 (access-control); Environment Management + Tenant-Scoped Flag CRUD (flag-management delta).*
 
-- [ ] 4.1 RED — `tests/integration/test_tenant_scoping.py`: two tenants; cross-tenant GET →
-      404, cross-tenant FK POST → 400, capability-less write → 403 (design D7 test 9).
-- [ ] 4.2 RED — `test_x_api_key_on_dashboard_route_returns_403`: assert status 403 and that no
-      `AttributeError` is raised (design D7 test 10).
-- [ ] 4.3 RED — `test_router_coverage`: walk `router.registry` for `core_flags/api/urls.py` and
+- [x] 4.1 RED — `tests/integration/test_tenant_scoping.py`: two tenants; cross-tenant GET →
+      404, cross-tenant FK POST → 400, capability-less write → 403 (design D7 test 9). Observed
+      RED (404/400/403 assertions failed against unwired viewsets) before GREEN.
+- [x] 4.2 RED — `test_x_api_key_on_dashboard_route_returns_403`: assert status 403 and that no
+      `AttributeError` is raised (design D7 test 10). Observed RED (200, not 403) before GREEN.
+- [x] 4.3 RED — `test_router_coverage`: walk `router.registry` for `core_flags/api/urls.py` and
       `sdk_api/api/urls.py`; every viewset subclasses `TenantScopedViewSetMixin` (design D7
-      test 11).
-- [ ] 4.4 GREEN — `config/settings.py:187-189`: global `DEFAULT_PERMISSION_CLASSES` →
+      test 11). Observed RED (`AssertionError` on the first unscoped viewset) before GREEN.
+- [x] 4.4 GREEN — `config/settings.py:187-189`: global `DEFAULT_PERMISSION_CLASSES` →
       `tenancy.permissions.IsDashboardUser`; `authentication/views.py:164,181` move to the
       same class.
-- [ ] 4.5 GREEN — `core_flags/api/views.py`: apply
+- [x] 4.5 GREEN — `core_flags/api/views.py`: apply
       `(TenantScopedViewSetMixin, QueryParamFilterMixin, ModelViewSet)` MRO order to
       `EnvironmentViewSet`, `FeatureFlagViewSet`, `StrategyRuleViewSet`, `ConditionViewSet`,
       `FlagOverrideViewSet`; set `environment_lookup`/`capability_for_action`; add
-      `rotate_api_key` action.
-- [ ] 4.6 GREEN — `sdk_api/api/views.py`: scope `SDKRegistrationViewSet`,
+      `rotate_api_key` action. See Deviations #1 and #2 below for two bugs this wiring
+      surfaced in the already-implemented `tenancy/permissions.py`.
+- [x] 4.6 GREEN — `sdk_api/api/views.py`: scope `SDKRegistrationViewSet`,
       `EvaluationLogViewSet` the same way.
-- [ ] 4.7 GREEN — `tenancy/api/{views,serializers,urls}.py`: new `OrganizationViewSet`,
-      `ProjectViewSet`.
-- [ ] 4.8 GREEN — `core_flags/api/serializers.py`: narrow `FeatureFlagSerializer.environment`,
+- [x] 4.7 GREEN — `tenancy/api/{views,serializers,urls}.py`: new `OrganizationViewSet`,
+      `ProjectViewSet`. Implemented as `ReadOnlyModelViewSet` — see Deviation #3.
+- [x] 4.8 GREEN — `core_flags/api/serializers.py`: narrow `FeatureFlagSerializer.environment`,
       `StrategyRuleSerializer.flag`, `ConditionSerializer.rule`, `FlagOverrideSerializer.flag`,
-      **and** `EnvironmentSerializer.project` (F3 — the fifth field, the root-level hole).
-- [ ] 4.9 RED — `test_environment_serializer_project_narrowed`: POST
+      **and** `EnvironmentSerializer.project` (F3 — the fifth field, the root-level hole). Added
+      `tenancy/serializers.py::CapabilityScopedFKMixin` (design D5/file list; not separately
+      numbered as a task but required to implement 4.8).
+- [x] 4.9 RED — `test_environment_serializer_project_narrowed`: POST
       `/api/v1/environments/` with a foreign project UUID → 400, no row created (spec:
-      "Root-level cross-tenant write").
-- [ ] 4.10 RED — `test_move_environment_to_foreign_project_rejected`: PATCH an existing
+      "Root-level cross-tenant write"). Observed RED (`IntegrityError`, since `project` did not
+      yet exist as a serializer field) before GREEN.
+- [x] 4.10 RED — `test_move_environment_to_foreign_project_rejected`: PATCH an existing
       environment's `project` to a foreign UUID → 400, assignment unchanged (spec: "Moving an
-      environment into another tenant's project rejected").
-- [ ] 4.11 GREEN — confirm 4.9/4.10 pass via 4.8's narrowing.
-- [ ] 4.12 RED then GREEN — `test_serializer_without_request_context`: write → 400, read →
-      still serializes (design's `.none()` decision).
-- [ ] 4.13 Confirm full `pytest` green; confirm the four protected SDK files
+      environment into another tenant's project rejected"). Observed RED (200, not 400) before
+      GREEN.
+- [x] 4.11 GREEN — confirm 4.9/4.10 pass via 4.8's narrowing. Also added
+      `test_own_project_accepted_on_create` as the required triangulation case (a project the
+      user does hold `environment.create` on must still succeed) — see Deviation #1.
+- [x] 4.12 RED then GREEN — `test_serializer_without_request_context`: write → 400, read →
+      still serializes (design's `.none()` decision). Observed RED (write validated as `True`
+      with no narrowing at all) before GREEN.
+- [x] 4.13 Confirm full `pytest` green; confirm the four protected SDK files
       (`sdk_api/views.py`, `sdk_api/authentication.py`, `sdk_api/payloads.py`,
-      `core_flags/notifications.py`) are untouched (F6 / proposal success criterion).
+      `core_flags/notifications.py`) are untouched (F6 / proposal success criterion). 374/374
+      green on Postgres 18; `git diff --stat` on the four files is empty.
+
+### Slice 4 deviations from the planning artifacts
+
+1. **`EnvironmentViewSet.create` cannot use `HasCapability`'s generic pre-check.**
+   `HasCapability.has_permission`'s unsafe-method pre-check asks
+   `environments_with(u, capability).exists()` — "does any *existing* Environment row grant
+   this". For every other viewset the gated capability lives at the level being queried
+   (`FLAG_EDIT` needs an existing Environment; the Flag itself need not exist yet). But
+   `ENVIRONMENT_CREATE` is a *project*-level capability, and the pre-check queries `Environment`
+   rows — the exact model being created. On a project's *first* environment, that queryset is
+   empty even when the user genuinely holds `ENVIRONMENT_CREATE` via `ProjectMembership`,
+   producing a false 403 ahead of Layer 2 ever running. Neither `design.md` nor `tasks.md`
+   anticipated this. Fix: `EnvironmentViewSet.get_permissions()` excludes `HasCapability` only
+   for the `create` action, relying solely on Layer 2 (`EnvironmentSerializer.project`
+   narrowing) — consistent with design D5's own statement that "Layer 2 is the ONLY create-time
+   gate" for exactly this reason. Every other action (`update`, `partial_update`, `destroy`,
+   `rotate_api_key`) operates on an environment that already exists, where the pre-check is
+   meaningful, so only `create` is excluded. `tenancy/permissions.py` itself is unchanged for
+   this point. Proven by `test_own_project_accepted_on_create` (201 with a legitimate,
+   first-ever grant) alongside `test_foreign_project_rejected_on_create` (400).
+
+2. **Two bugs found in the already-implemented, already-unit-tested `tenancy/permissions.py`
+   (slice 3) while wiring it to real HTTP requests, both fixed in this slice:**
+   - `HasCapability.has_object_permission` never bypassed `SAFE_METHODS`, unlike
+     `has_permission`. A plain `GET` on a visible object called
+     `capability_for_action(view.action)` with `view.action == "retrieve"`, which is never
+     mapped in any viewset's `capability_map` (only unsafe actions are), raising
+     `ImproperlyConfigured` (500) on every single-object read. Fixed by adding the same
+     `SAFE_METHODS` bypass already present in `has_permission`. No RED task in `tasks.md`
+     covers object-level reads specifically, but `test_cross_tenant_read_returns_404` and the
+     full existing GET-based integration suite would not pass without this fix.
+   - Neither `has_permission` nor `has_object_permission` handled `view.action is None`. DRF
+     resolves `view.action` from the router's method map in `initialize_request`, *before*
+     dispatch decides the HTTP method is unsupported. A verb a viewset does not implement (e.g.
+     `PATCH`/`DELETE` on the append-only `FlagOverrideViewSet`) has no `action_map` entry, so
+     `view.action` is `None`; `capability_for_action(None)` then raised `ImproperlyConfigured`
+     (500) instead of letting DRF's own dispatch reach `http_method_not_allowed` (405). Fixed by
+     returning `True` (permit) when `view.action is None` in both methods, deferring entirely to
+     DRF's own method-not-allowed handling. Surfaced by the pre-existing
+     `test_is_append_only` test in `tests/integration/test_monitoring_api.py`, which predates
+     this slice and was not itself modified.
+   Both fixes are additive branches; none of slice 3's 13 `tests/unit/test_permissions.py`
+   tests needed changes and all still pass unmodified.
+
+3. **`tenancy.api.OrganizationViewSet`/`ProjectViewSet` implemented as `ReadOnlyModelViewSet`,
+   not full `ModelViewSet`.** Task 4.7 says "new `OrganizationViewSet`, `ProjectViewSet`" without
+   specifying CRUD scope. Design's five-field FK-narrowing table (F3/D5) does not include
+   `Project.organization` — if these viewsets accepted writes with a plain
+   `PrimaryKeyRelatedField` for `organization`, any authenticated user could `POST` a `Project`
+   under another organization's UUID, an unnarrowed root-level hole one level *above* the one
+   this slice closes. No task or spec scenario in Phase 4 requires organization/project creation
+   via this API (`Owner/Admin creates and attaches users` is explicitly slice 6's traceability).
+   Given the choice between inventing an unreviewed, unnarrowed write path and keeping these two
+   viewsets read-scoped (satisfying the "Queryset Scoping Returns 404" requirement, which does
+   name `OrganizationViewSet`/`ProjectViewSet`, and task 4.3's router semantics), read-only was
+   chosen. Writes belong to slice 6's grant/member-management endpoints, which will need to
+   narrow `Project.organization` when they add them.
+
+4. **`OrganizationViewSet`/`ProjectViewSet` are intentionally excluded from the task 4.3
+   router-coverage test.** `TenantScopedViewSetMixin.get_queryset()` is hard-coded to
+   `environments_with(u, ENVIRONMENT_VIEW)` (design D5's own snippet) — it cannot express
+   `orgs_with`/`projects_with` scoping for models that sit *above* `Environment` in the
+   hierarchy. Design D4 itself scopes the router-walk test to `core_flags/api/urls.py` and
+   `sdk_api/api/urls.py` only (not `tenancy/api/urls.py`), which resolves this without needing
+   an allowlist: the test asserts exactly the 5 + 2 = 7 viewsets in those two routers.
 
 ## Phase 5 — Slice 5: Analytics Scoping
 

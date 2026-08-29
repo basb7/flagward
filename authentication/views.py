@@ -6,9 +6,11 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
+
+from tenancy.permissions import IsDashboardUser
 
 
 def set_tokens_cookies(response, refresh_token, access_token):
@@ -161,7 +163,7 @@ def register(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsDashboardUser])
 def logout(request):
     """
     Logout endpoint - clears cookies.
@@ -178,7 +180,7 @@ def logout(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsDashboardUser])
 def me(request):
     """
     Get current user info.
