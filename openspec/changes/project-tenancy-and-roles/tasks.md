@@ -422,3 +422,62 @@ preview is the design's mitigation for its top risk (admins misreading union/car
 - [ ] 7.8 Run `npm run lint && npm run build` in `frontend/`; manually confirm switching
       project re-filters lists, and a proposed grant's preview matches the capability set
       observed after saving.
+
+## Phase 8 - Slice 8: API gaps found while building the frontend
+
+*Corrections to slices 4 and 6, discovered when slice 7 tried to consume the API. Not new
+scope: each item is something an earlier slice's spec or design called for and its
+implementation did not deliver.*
+
+- [x] 8.1 RED - `POST /api/v1/environments/` from the dashboard's own payload shape.
+      `EnvironmentSerializer` gained a required `project` since slice 4, but
+      `environmentsApi.create` still sends only `{name, key}`, so **every environment
+      creation from the UI has returned 400 since PR #12**. No frontend test exists to
+      catch it. Pin the contract with a backend test.
+      **Correction against this task's own "RED" label**: the added test
+      (`test_create_payload_without_project_is_rejected`,
+      `tests/integration/test_tenant_scoping.py`) passed immediately on the first run --
+      slice 4's F3 fix already makes `project` a required, non-nullable
+      `PrimaryKeyRelatedField` with no default, so DRF's own "this field is required"
+      validation already rejects a payload missing it entirely, with no production code
+      change needed here. This is a real gap (no test previously pinned this exact payload
+      shape; `test_foreign_project_rejected_on_create` only covers a *present-but-foreign*
+      project, not an *absent* one) but it is a regression-pinning test, not a RED→GREEN
+      bug fix -- the backend was already correct; only the frontend caller (8.6) was not.
+- [x] 8.2 RED - listing memberships: `GET` on organization, project and environment
+      membership collections, each scoped and each proving a foreign tenant's rows are
+      absent. Observed RED for the right reason before GREEN: `GET
+      /organization-memberships/` returned 404 (no collection route registered at all,
+      matching the design finding -- neither `list` nor `create` existed on that viewset);
+      `GET /project-memberships/` and `/environment-memberships/` returned 405 (the
+      collection route already existed for `create`, but `GET` was not mapped to it).
+- [x] 8.3 GREEN - add `ListModelMixin` to `OrganizationMembershipViewSet`,
+      `ProjectMembershipViewSet` and `EnvironmentMembershipViewSet`
+      (`tenancy/api/views.py:110,183,198`). Without it DRF registers no collection route at
+      all, so the members screen can create members and never enumerate them.
+      **Capability chosen for reading**: each viewset's `get_queryset` now scopes by the
+      *view* capability at its own level (`ORG_VIEW` / `PROJECT_VIEW` / `ENVIRONMENT_VIEW`),
+      not the `*_MANAGE_MEMBERS` capability the create/update/destroy actions already
+      require -- seeing who else shares your organization, project, or environment is
+      ordinary visibility, not administration. `OrganizationMembershipViewSet` already drew
+      this exact split (its `get_queryset` was `ORG_VIEW`-scoped while its mutations gate on
+      `ORG_MANAGE_MEMBERS` via `_require_manage_permission`); this task extends the same
+      split to the other two levels rather than inventing a new one.
+- [x] 8.4 RED - `?project=` on `GET /api/v1/environments/` and `/api/v1/flags/`. Observed RED
+      (both endpoints returned every visible row regardless of the `?project=` param;
+      `?project=not-a-uuid` returned 200, not 400) before GREEN.
+- [x] 8.5 GREEN - `EnvironmentViewSet` gains `QueryParamFilterMixin` and a `project` filter;
+      `FeatureFlagViewSet.filter_fields` gains `environment__project` under the public name
+      `project`. Design D10 called for this and slice 4 did not wire it, which is why slice 7
+      needed a client-side filter fallback.
+- [x] 8.6 GREEN - fix `environmentsApi.create` and the environments page dialog to send
+      `project`. This branch has no `TenantContext`/tenancy API surface at all (slice 7's
+      frontend work lives on a separate branch that will rebase on top of this one), so the
+      minimal fix adds just enough surface for the dialog to work: a read-only
+      `projectsApi.list()` (`GET /api/v1/tenancy/projects/`, already existed since task 4.7)
+      and a project `<select>` in the create dialog, defaulting to the first project
+      returned and disabling Create until one is selected. No other page, context, or
+      component was touched.
+- [x] 8.7 Confirm full `pytest` green on Postgres and `ruff check .` clean. 416/416 passed
+      on Postgres 18 (406 baseline + 10 new), 6.01s; `ruff check .` clean.
+
