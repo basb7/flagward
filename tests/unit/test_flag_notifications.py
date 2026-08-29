@@ -64,8 +64,9 @@ class TestChangesArePublished:
     whether it was changed through the API, the admin or a shell.
     """
 
-    def setup_method(self):
-        self.env = Environment.objects.create(name="Prod", key="prod")
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
 
     def make_flag(self):
         return FeatureFlag.objects.create(

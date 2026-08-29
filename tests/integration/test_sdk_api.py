@@ -15,10 +15,11 @@ from sdk_api.models import SDKRegistration
 class TestSDKFlagsEndpoint:
     """Tests for GET /api/v1/sdk/flags/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.flag = FeatureFlag.objects.create(
             environment=self.env,
             key="new-dashboard",
@@ -43,10 +44,11 @@ class TestSDKFlagsEndpoint:
 class TestSDKEvaluateEndpoint:
     """Tests for POST /api/v1/sdk/evaluate/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.flag = FeatureFlag.objects.create(
             environment=self.env,
             key="new-dashboard",
@@ -71,10 +73,11 @@ class TestSDKEvaluateEndpoint:
 class TestSDKRegisterEndpoint:
     """Tests for POST /api/v1/sdk/register/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
 
     def register(self, version="1.0.0"):
         """Register a JavaScript SDK against this environment's API key."""
@@ -121,10 +124,11 @@ class TestSDKRegisterEndpoint:
 class TestSDKStreamEndpoint:
     """Tests for GET /api/v1/sdk/stream/ endpoint."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
         self.client = APIClient()
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
 
     def test_sdk_stream_requires_authentication(self):
         """Test that SDK stream endpoint requires authentication."""

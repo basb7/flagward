@@ -22,8 +22,9 @@ from core_flags.services import FlagEvaluationService
 class TestOverridePrecedence:
     """Tests for FlagEvaluationService with an active override."""
 
-    def setup_method(self):
-        self.env = Environment.objects.create(name="Prod", key="prod")
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.service = FlagEvaluationService()
 
     def _flag(self, *, is_enabled):
@@ -110,8 +111,9 @@ class TestOverridePrecedence:
 class TestFlagOverrideModel:
     """Tests for the override queryset helpers."""
 
-    def setup_method(self):
-        self.env = Environment.objects.create(name="Prod", key="prod")
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.flag = FeatureFlag.objects.create(
             environment=self.env, key="checkout", name="Checkout", is_enabled=True
         )

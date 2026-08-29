@@ -99,7 +99,7 @@ in CI) must land first — SQLite-only CI would never surface the divergence.
 - [x] 1.2 Add `DB_NAME`/`DB_USER`/`DB_PASSWORD`/`DB_HOST`/`DB_PORT` env vars at job level
       (flips `config/settings.py:94`'s engine branch; `psycopg2-binary` already in
       `requirements/base.txt`).
-- [ ] 1.3 Push the branch; confirm the `Backend (lint + tests)` job name is unchanged
+- [x] 1.3 Push the branch; confirm the `Backend (lint + tests)` job name is unchanged
       (branch-protection contract) and the existing 170 tests pass on Postgres.
 
 ## Phase 2 — Slice 2: Tenancy Schema + Test Infrastructure (fused, one PR)
@@ -107,35 +107,40 @@ in CI) must land first — SQLite-only CI would never surface the divergence.
 *Traces: Tenancy Hierarchy (tenancy-model). Test infra ships WITH the NOT NULL migration per
 design D7 — splitting them leaves CI red between merges.*
 
-- [ ] 2.1 RED — `tests/unit/test_models.py::test_environment_requires_project`: assert
+- [x] 2.1 RED — `tests/unit/test_models.py::test_environment_requires_project`: assert
       `Environment.objects.create(...)` without `project=` raises `IntegrityError` (design D7
       test 8). Fails: column is nullable/absent.
-- [ ] 2.2 RED — `tests/unit/test_models.py::test_two_projects_can_each_hold_production`
+- [x] 2.2 RED — `tests/unit/test_models.py::test_two_projects_can_each_hold_production`
       (design D7 test 7). Fails: `unique_together` is still `("key",)`.
-- [ ] 2.3 GREEN — create `tenancy/models.py`: `Organization`, `Project`,
+- [x] 2.3 GREEN — create `tenancy/models.py`: `Organization`, `Project`,
       `OrganizationMembership`, `ProjectMembership`, `EnvironmentMembership`, `Plan`, 3 role
       enums, named `UniqueConstraint`s, `Index(["user"])` per table, `CheckConstraint` on role.
-- [ ] 2.4 GREEN — modify `core_flags/models.py`: add `Environment.project` FK (lazy
+- [x] 2.4 GREEN — modify `core_flags/models.py`: add `Environment.project` FK (lazy
       `"tenancy.Project"` ref), move `unique_together` to `("project", "key")`.
-- [ ] 2.5 GREEN — create `tenancy/migrations/0001_initial.py` (5 `CreateModel`; depends on
+- [x] 2.5 GREEN — create `tenancy/migrations/0001_initial.py` (5 `CreateModel`; depends on
       `core_flags.0002` + `AUTH_USER_MODEL`).
-- [ ] 2.6 GREEN — create `core_flags/migrations/0003_environment_project.py`:
+- [x] 2.6 GREEN — create `core_flags/migrations/0003_environment_project.py`:
       `AddField(null=True)` → `RunPython(backfill_default_project, noop)` →
       `AlterField(null=False)` → `AlterUniqueTogether`; depends on `tenancy.0001`.
-- [ ] 2.7 GREEN — create `tenancy/admin.py` registering all five new models.
-- [ ] 2.8 Create `tests/conftest.py`: function-scoped `organization`, `project`, `environment`,
+- [x] 2.7 GREEN — create `tenancy/admin.py` registering all five new models.
+- [x] 2.8 Create `tests/conftest.py`: function-scoped `organization`, `project`, `environment`,
       `flag`, `make_project`/`make_environment`/`make_flag`, `user`, `grant`, `api_client`,
       `assert_membership_never_joined`.
-- [ ] 2.9 Convert the 18 `setup_method` blocks (8 files) to
-      `@pytest.fixture(autouse=True) def _setup(self, project)`.
-- [ ] 2.10 Add `project=project` to the 44 `Environment.objects.create(...)` sites (11 files,
+- [x] 2.9 Convert the `setup_method` blocks that build an `Environment` to
+      `@pytest.fixture(autouse=True) def _setup(self, project)`. **Correction against design
+      F2**: measured 15 such blocks across 7 files, not 18/8 — `test_auth_refresh.py`'s 3
+      `setup_method` blocks build no `Environment` and need no `project`, so they were left
+      untouched. See Deviations in apply-progress.
+- [x] 2.10 Add `project=project` to the 44 `Environment.objects.create(...)` sites (11 files,
       23 in `tests/unit/test_models.py`); leave the 82 `FeatureFlag.objects.create(environment=
       env, ...)` sites untouched (F2 — verified, not 126 sites).
-- [ ] 2.11 Add a `project` parameter to the 6 module-level fixtures that build environments.
-- [ ] 2.12 Confirm `tests/integration/test_admin_api.py:27-127` still sets up cleanly after its
+- [x] 2.11 Add a `project` parameter to the module-level fixtures that build environments.
+      **Correction against design F2**: measured 3 such fixtures across 3 files, not 6 — the
+      other fixtures in those files (`client`, `sdk_client`) build no `Environment`.
+- [x] 2.12 Confirm `tests/integration/test_admin_api.py:27-127` still sets up cleanly after its
       `setup_method` conversion; its `pass`-stub bodies stay unchanged (converting them to real
       tests is out of scope — design's open question).
-- [ ] 2.13 Run full `pytest` on local Postgres (170+ tests green), then
+- [x] 2.13 Run full `pytest` on local Postgres (170+ tests green), then
       `python manage.py migrate tenancy zero` to prove the pre-second-project reverse path.
 
 ## Phase 3 — Slice 3: Capability Resolver (pure library, no viewset wiring)

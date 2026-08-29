@@ -32,12 +32,13 @@ class ConditionOperator(models.TextChoices):
 class Environment(models.Model):
     """Environment model for feature flags."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("tenancy.Project", on_delete=models.CASCADE, related_name="environments")
     name = models.CharField(max_length=255)
     key = models.SlugField(max_length=255)
     api_key = models.CharField(max_length=255, unique=True, db_index=True)
 
     class Meta:
-        unique_together = ("key",)
+        unique_together = ("project", "key")
 
     def __str__(self):
         return self.name

@@ -19,9 +19,10 @@ from core_flags.services import FlagEvaluationService
 class TestFlagEvaluationService:
     """Tests for FlagEvaluationService."""
 
-    def setup_method(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
         """Set up test data."""
-        self.env = Environment.objects.create(name="Prod", key="prod")
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
         self.service = FlagEvaluationService()
 
     def test_disabled_flag_returns_false(self):

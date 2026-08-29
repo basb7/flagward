@@ -12,8 +12,9 @@ from sdk_api.models import SDKRegistration, SDKType
 class TestSDKRegistrationUniqueness:
     """A registration is an inventory row: one per environment and SDK type."""
 
-    def setup_method(self):
-        self.env = Environment.objects.create(name="Prod", key="prod")
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
 
     def test_duplicate_environment_and_sdk_type_is_rejected(self):
         """The database refuses a second row for the same environment and type."""
@@ -37,9 +38,9 @@ class TestSDKRegistrationUniqueness:
 
         assert SDKRegistration.objects.filter(environment=self.env).count() == 2
 
-    def test_same_sdk_type_coexists_across_environments(self):
+    def test_same_sdk_type_coexists_across_environments(self, project):
         """The constraint is scoped to one environment."""
-        other = Environment.objects.create(name="Staging", key="staging")
+        other = Environment.objects.create(name="Staging", key="staging", project=project)
 
         SDKRegistration.objects.create(
             environment=self.env, sdk_type=SDKType.JAVASCRIPT, version="1.0.0"
