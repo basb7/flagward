@@ -7,17 +7,21 @@ per-environment role grants, and seat accounting against the plan.
 
 ## Requirements
 
-### Requirement: Self-Registration Auto-Provisions an Organization
+### Requirement: Self-Registration Creates Only the User
 
-Registration MUST remain open. Registering a new user MUST automatically
-create exactly one `Organization` with that user as its `ADMIN`.
+Registration MUST remain open. Registering a new user MUST create exactly
+that `auth.User` and MUST NOT create an `Organization` or any
+`OrganizationMembership`. The first organization is created explicitly from
+the dashboard's empty state, which is what lets the person name it
+themselves instead of inheriting a generated name.
 
-#### Scenario: New registration creates an organization
+#### Scenario: New registration creates a user and no organization
 
 - GIVEN no account exists for a given email
 - WHEN the user completes registration
-- THEN exactly one `Organization` is created
-- AND the new user holds an `OrganizationMembership` with role `ADMIN` in it
+- THEN exactly one `auth.User` is created
+- AND no `Organization` is created
+- AND no `OrganizationMembership` is created
 
 ### Requirement: An Admin Creates and Attaches Users
 

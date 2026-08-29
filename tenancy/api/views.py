@@ -2,16 +2,23 @@
 API views for tenancy.
 
 Organization/Project read scoping (design D4) proves the "Queryset Scoping
-Returns 404" requirement at the top of the hierarchy. `ProjectViewSet` stays
-read-only: its write path (creating/moving a `Project` between
-organizations) still has no narrowed FK and would reopen a root-level hole
-one level above the one this change closes (F3) -- that remains out of scope
-for this slice.
+Returns 404" requirement at the top of the hierarchy.
 
-`OrganizationViewSet` gains exactly one write surface: the `members` action
-(slice 6, tasks 6.3/6.5), which never exposes a writable `organization` FK --
-the target organization comes from the URL and is capability-checked
-explicitly, not through `CapabilityScopedFKMixin`.
+`OrganizationViewSet.create` has no capability to check and no FK to narrow:
+an organization has no parent tenant, so any authenticated user may create
+one and becomes its `ADMIN` in the same transaction -- the membership
+creation is not optional and not a second request, since a user must never
+end up with an organization it cannot administer. The `members` action
+(slice 6, tasks 6.3/6.5) never exposes a writable `organization` FK -- the
+target organization comes from the URL and is capability-checked explicitly,
+not through `CapabilityScopedFKMixin`.
+
+`ProjectViewSet.create`'s `organization` FK is narrowed through
+`ProjectSerializer`'s `CapabilityScopedFKMixin` (design D5, Layer 2 -- the
+only create-time gate, since DRF's permission class has no object on
+`POST`) to organizations where the requester holds `Capability.PROJECT_CREATE`.
+An unnarrowed FK here would reopen exactly the root-level hole the tenancy
+change closed (F3), one level above it.
 """
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -47,14 +54,24 @@ from .serializers import (
 User = get_user_model()
 
 
-class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
-    """List, retrieve, and manage members of organizations the user can view."""
+class OrganizationViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
+    """List, retrieve, create, and manage members of organizations the user can view."""
 
     queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
 
     def get_queryset(self):
         return orgs_with(self.request.user, Capability.ORG_VIEW)
+
+    def perform_create(self, serializer):
+        # A user must never end up with an organization it cannot
+        # administer, so the ADMIN membership is created in the same
+        # transaction as the organization, not a second request.
+        with transaction.atomic():
+            organization = serializer.save()
+            OrganizationMembership.objects.create(
+                organization=organization, user=self.request.user, role=OrganizationRole.ADMIN
+            )
 
     @action(detail=True, methods=["post"], url_path="members")
     def members(self, request, pk=None):
@@ -189,8 +206,8 @@ class OrganizationMembershipViewSet(
             instance.delete()
 
 
-class ProjectViewSet(viewsets.ReadOnlyModelViewSet):
-    """List and retrieve projects the user can view."""
+class ProjectViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
+    """List, retrieve, and create projects the user can view."""
 
     queryset = Project.objects.select_related("organization")
     serializer_class = ProjectSerializer

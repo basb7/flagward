@@ -4,14 +4,14 @@ Authentication API endpoints with httpOnly cookies.
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tenancy.models import Organization, OrganizationMembership, OrganizationRole
 from tenancy.permissions import IsDashboardUser
 
 
@@ -136,20 +136,26 @@ def register(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Create the user and auto-provision an organization the user administers
-    # (spec/organization-management: Self-Registration Auto-Provisions an
-    # Organization). One transaction: a user must never exist without the
-    # organization membership that makes it navigable.
-    with transaction.atomic():
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-        )
-        organization = Organization.objects.create(name=f"{username}'s Organization")
-        OrganizationMembership.objects.create(
-            organization=organization, user=user, role=OrganizationRole.ADMIN
-        )
+    # AUTH_PASSWORD_VALIDATORS (settings.py) is configured but does nothing on
+    # its own: Django only applies it where `validate_password` is called, and
+    # this endpoint never called it. Registration accepted a one-character
+    # password, and member creation checked length and nothing else, so
+    # "12345678" passed both the common-password and numeric-only validators
+    # the project had already decided it wanted.
+    try:
+        validate_password(password, user=User(username=username, email=email or ""))
+    except DjangoValidationError as exc:
+        return Response({"password": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Registration creates the user only (spec/organization-management:
+    # Self-Registration Creates Only the User). The first organization is
+    # created explicitly from the dashboard's empty state, which is what lets
+    # the person name it themselves instead of inheriting a generated name.
+    user = User.objects.create_user(
+        username=username,
+        email=email,
+        password=password,
+    )
 
     # Generate tokens
     refresh = RefreshToken.for_user(user)

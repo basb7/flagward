@@ -42,7 +42,7 @@ class TestAdminCreatesMember:
             {
                 "username": "newmember",
                 "email": "member@example.com",
-                "password": "password123",
+                "password": "tram-quartz-19-belt",
                 "role": OrganizationRole.USER,
             },
             format="json",
@@ -62,7 +62,7 @@ class TestAdminCreatesMember:
             {
                 "username": "newmember",
                 "email": "member@example.com",
-                "password": "password123",
+                "password": "tram-quartz-19-belt",
                 "role": OrganizationRole.USER,
             },
             format="json",
@@ -78,7 +78,7 @@ class TestAdminCreatesMember:
 
         response = client.post(
             f"/api/v1/tenancy/organizations/{foreign_org.id}/members/",
-            {"username": "intruder", "password": "password123", "role": OrganizationRole.USER},
+            {"username": "intruder", "password": "tram-quartz-19-belt", "role": OrganizationRole.USER},
             format="json",
         )
 
@@ -97,7 +97,7 @@ class TestSeatAccounting:
 
         response = client.post(
             f"/api/v1/tenancy/organizations/{organization.id}/members/",
-            {"username": "fifth", "password": "password123", "role": OrganizationRole.USER},
+            {"username": "fifth", "password": "tram-quartz-19-belt", "role": OrganizationRole.USER},
             format="json",
         )
 
@@ -112,7 +112,7 @@ class TestSeatAccounting:
 
         response = client.post(
             f"/api/v1/tenancy/organizations/{organization.id}/members/",
-            {"username": "sixth", "password": "password123", "role": OrganizationRole.USER},
+            {"username": "sixth", "password": "tram-quartz-19-belt", "role": OrganizationRole.USER},
             format="json",
         )
 
@@ -128,7 +128,7 @@ class TestSeatAccounting:
 
         response = client.post(
             f"/api/v1/tenancy/organizations/{organization.id}/members/",
-            {"username": "member501", "password": "password123", "role": OrganizationRole.USER},
+            {"username": "member501", "password": "tram-quartz-19-belt", "role": OrganizationRole.USER},
             format="json",
         )
 
@@ -144,7 +144,7 @@ class TestSeatAccounting:
 
         response = client.post(
             f"/api/v1/tenancy/organizations/{organization.id}/members/",
-            {"username": "replacement", "password": "password123", "role": OrganizationRole.USER},
+            {"username": "replacement", "password": "tram-quartz-19-belt", "role": OrganizationRole.USER},
             format="json",
         )
 
@@ -163,7 +163,7 @@ class TestSeatAccounting:
 
         response = client.post(
             f"/api/v1/tenancy/organizations/{organization.id}/members/",
-            {"username": "overflow", "password": "password123", "role": OrganizationRole.USER},
+            {"username": "overflow", "password": "tram-quartz-19-belt", "role": OrganizationRole.USER},
             format="json",
         )
 
@@ -184,7 +184,7 @@ class TestSeatAccounting:
 
         response = client.post(
             f"/api/v1/tenancy/organizations/{organization.id}/members/",
-            {"username": "ninth", "password": "password123", "role": OrganizationRole.USER},
+            {"username": "ninth", "password": "tram-quartz-19-belt", "role": OrganizationRole.USER},
             format="json",
         )
 
