@@ -10,25 +10,44 @@ from core_flags.models import (
     FlagOverride,
     StrategyRule,
 )
+from tenancy.capabilities import Capability
+from tenancy.scoping import environments_with, projects_with
+from tenancy.serializers import CapabilityScopedFKMixin
 
 
-class EnvironmentSerializer(serializers.ModelSerializer):
+class EnvironmentSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
     """Serializer for Environment model."""
     class Meta:
         model = Environment
-        fields = ['id', 'name', 'key', 'api_key']
+        fields = ['id', 'name', 'key', 'api_key', 'project']
         read_only_fields = ['id', 'api_key']
 
+    # F3 -- the root of the FK-narrowing chain. Without this, any
+    # authenticated user could POST an environment into another
+    # organization's project by UUID.
+    capability_scoped_fields = {
+        "project": (Capability.ENVIRONMENT_CREATE, projects_with),
+    }
 
-class ConditionSerializer(serializers.ModelSerializer):
+
+class ConditionSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
     """Serializer for Condition model."""
     class Meta:
         model = Condition
         fields = ['id', 'rule', 'attribute', 'operator', 'value']
         read_only_fields = ['id']
 
+    capability_scoped_fields = {
+        "rule": (
+            Capability.FLAG_EDIT,
+            lambda user, capability: StrategyRule.objects.filter(
+                flag__environment__in=environments_with(user, capability)
+            ),
+        ),
+    }
 
-class StrategyRuleSerializer(serializers.ModelSerializer):
+
+class StrategyRuleSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
     """Serializer for StrategyRule model."""
     conditions = ConditionSerializer(many=True, read_only=True)
 
@@ -36,6 +55,15 @@ class StrategyRuleSerializer(serializers.ModelSerializer):
         model = StrategyRule
         fields = ['id', 'flag', 'priority', 'operator_logic', 'conditions']
         read_only_fields = ['id']
+
+    capability_scoped_fields = {
+        "flag": (
+            Capability.FLAG_EDIT,
+            lambda user, capability: FeatureFlag.objects.filter(
+                environment__in=environments_with(user, capability)
+            ),
+        ),
+    }
 
 
 class ActiveOverrideSerializer(serializers.ModelSerializer):
@@ -46,7 +74,7 @@ class ActiveOverrideSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class FeatureFlagSerializer(serializers.ModelSerializer):
+class FeatureFlagSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
     """Serializer for FeatureFlag model."""
     rules = StrategyRuleSerializer(many=True, read_only=True)
     active_override = serializers.SerializerMethodField()
@@ -67,6 +95,10 @@ class FeatureFlagSerializer(serializers.ModelSerializer):
             'rules',
         ]
         read_only_fields = ['id', 'effective_is_enabled', 'active_override']
+
+    capability_scoped_fields = {
+        "environment": (Capability.FLAG_EDIT, environments_with),
+    }
 
     @staticmethod
     def _active_override(flag):
@@ -91,13 +123,22 @@ class FeatureFlagSerializer(serializers.ModelSerializer):
         return override.is_enabled if override else flag.is_enabled
 
 
-class FlagOverrideSerializer(serializers.ModelSerializer):
+class FlagOverrideSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
     """Serializer for FlagOverride model."""
     flag_key = serializers.CharField(source='flag.key', read_only=True)
     flag_name = serializers.CharField(source='flag.name', read_only=True)
     environment = serializers.PrimaryKeyRelatedField(source='flag.environment', read_only=True)
     environment_key = serializers.CharField(source='flag.environment.key', read_only=True)
     is_active = serializers.BooleanField(read_only=True)
+
+    capability_scoped_fields = {
+        "flag": (
+            Capability.OVERRIDE_MANAGE,
+            lambda user, capability: FeatureFlag.objects.filter(
+                environment__in=environments_with(user, capability)
+            ),
+        ),
+    }
 
     class Meta:
         model = FlagOverride

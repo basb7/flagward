@@ -8,11 +8,14 @@ from rest_framework import viewsets
 
 from core.api.mixins import QueryParamFilterMixin
 from sdk_api.models import EvaluationLog, SDKRegistration
+from tenancy.permissions import TenantScopedViewSetMixin
 
 from .serializers import EvaluationLogSerializer, SDKRegistrationSerializer
 
 
-class SDKRegistrationViewSet(QueryParamFilterMixin, viewsets.ReadOnlyModelViewSet):
+class SDKRegistrationViewSet(
+    TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """List and retrieve registered SDK instances."""
 
     queryset = SDKRegistration.objects.select_related("environment").order_by(
@@ -20,9 +23,13 @@ class SDKRegistrationViewSet(QueryParamFilterMixin, viewsets.ReadOnlyModelViewSe
     )
     serializer_class = SDKRegistrationSerializer
     filter_fields = ("environment", "sdk_type", "version")
+    environment_lookup = "environment"
+    capability_map = {}  # read-only viewset: no unsafe action ever reaches HasCapability
 
 
-class EvaluationLogViewSet(QueryParamFilterMixin, viewsets.ReadOnlyModelViewSet):
+class EvaluationLogViewSet(
+    TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """List and retrieve flag evaluation logs."""
 
     queryset = EvaluationLog.objects.select_related("flag", "flag__environment")
@@ -33,3 +40,5 @@ class EvaluationLogViewSet(QueryParamFilterMixin, viewsets.ReadOnlyModelViewSet)
         "environment": "flag__environment",
     }
     boolean_filter_fields = ("result",)
+    environment_lookup = "flag__environment"
+    capability_map = {}

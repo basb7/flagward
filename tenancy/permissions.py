@@ -44,10 +44,25 @@ class HasCapability(BasePermission):
     def has_permission(self, request, view) -> bool:
         if request.method in SAFE_METHODS:
             return True  # Layer 1 (queryset scoping) already scoped the read.
+        if view.action is None:
+            # DRF resolves `view.action` from the router's method map before
+            # dispatching to a handler. An HTTP verb the viewset does not
+            # implement (e.g. PATCH on a create/list/retrieve-only viewset)
+            # has no entry, so `action` is `None` here -- permission checks
+            # run in `initial()`, *before* DRF decides the method is
+            # unsupported. Denying capability for a nonexistent action would
+            # surface as this permission class's own `ImproperlyConfigured`
+            # (a 500); passing lets DRF's own dispatch reach
+            # `http_method_not_allowed` and return the correct 405.
+            return True
         capability = view.capability_for_action(view.action)
         return environments_with(request.user, capability).exists()
 
     def has_object_permission(self, request, view, obj) -> bool:
+        if request.method in SAFE_METHODS:
+            return True  # Layer 1 (queryset scoping) already scoped the read.
+        if view.action is None:
+            return True  # See has_permission: let DRF's own 405 dispatch handle it.
         capability = view.capability_for_action(view.action)
         return capability in capabilities_for(request.user, view.environment_of(obj))
 

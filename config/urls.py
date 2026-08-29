@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/v1/auth/', include('authentication.urls')),
     path('api/v1/', include('core_flags.api.urls')),
     path('api/v1/', include('sdk_api.api.urls')),
+    path('api/v1/tenancy/', include('tenancy.api.urls')),
     path('api/v1/analytics/', include('analytics.api.urls')),
     path('api/v1/sdk/', include('sdk_api.urls')),
 ]

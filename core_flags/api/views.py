@@ -15,6 +15,8 @@ from core_flags.models import (
     FlagOverride,
     StrategyRule,
 )
+from tenancy.capabilities import Capability
+from tenancy.permissions import HasCapability, IsDashboardUser, TenantScopedViewSetMixin
 
 from .serializers import (
     ConditionSerializer,
@@ -25,13 +27,48 @@ from .serializers import (
 )
 
 
-class EnvironmentViewSet(viewsets.ModelViewSet):
+class EnvironmentViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for Environment model."""
-    queryset = Environment.objects.all()
+    queryset = Environment.objects.select_related("project")
     serializer_class = EnvironmentSerializer
+    permission_classes = [IsDashboardUser, HasCapability]
+    environment_lookup = ""  # the viewset's own model IS the environment
+    capability_map = {
+        "create": Capability.ENVIRONMENT_CREATE,
+        "update": Capability.ENVIRONMENT_MANAGE,
+        "partial_update": Capability.ENVIRONMENT_MANAGE,
+        "destroy": Capability.ENVIRONMENT_DELETE,
+        "rotate_api_key": Capability.ENVIRONMENT_MANAGE,
+    }
+
+    def get_permissions(self):
+        # `create`'s capability (ENVIRONMENT_CREATE) lives one level up, at
+        # the *project*. `HasCapability.has_permission`'s pre-check asks
+        # "does environments_with(u, capability) hold anything" -- a
+        # question that is only answerable against *existing* Environment
+        # rows. For an Environment's own create, that check is asking about
+        # the very row being created and is empty on a project's first
+        # environment even when the user genuinely holds the capability.
+        # Layer 2 (the narrowed `project` field on EnvironmentSerializer) is
+        # already the sole create-time gate per design D5 -- this just stops
+        # Layer 3's mismatched pre-check from producing a false 403 ahead of
+        # it. Every other action operates on an Environment that already
+        # exists, where the pre-check is meaningful, so only `create` is
+        # excluded.
+        if self.action == "create":
+            return [permission() for permission in [IsDashboardUser]]
+        return super().get_permissions()
+
+    @action(detail=True, methods=["post"])
+    def rotate_api_key(self, request, pk=None):
+        """Issue a fresh api_key for this environment (design F3)."""
+        environment = self.get_object()
+        environment.api_key = ""  # Environment.save() regenerates when blank.
+        environment.save(update_fields=["api_key"])
+        return Response(self.get_serializer(environment).data)
 
 
-class FeatureFlagViewSet(QueryParamFilterMixin, viewsets.ModelViewSet):
+class FeatureFlagViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ModelViewSet):
     """ViewSet for FeatureFlag model."""
     queryset = FeatureFlag.objects.select_related("environment").prefetch_related(
         "rules",
@@ -45,23 +82,48 @@ class FeatureFlagViewSet(QueryParamFilterMixin, viewsets.ModelViewSet):
     serializer_class = FeatureFlagSerializer
     filter_fields = ("environment", "is_enabled", "flag_type")
     boolean_filter_fields = ("is_enabled",)
+    permission_classes = [IsDashboardUser, HasCapability]
+    environment_lookup = "environment"
+    capability_map = {
+        "create": Capability.FLAG_EDIT,
+        "update": Capability.FLAG_EDIT,
+        "partial_update": Capability.FLAG_EDIT,
+        "destroy": Capability.FLAG_EDIT,
+    }
 
 
-class StrategyRuleViewSet(QueryParamFilterMixin, viewsets.ModelViewSet):
+class StrategyRuleViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ModelViewSet):
     """ViewSet for StrategyRule model."""
     queryset = StrategyRule.objects.all()
     serializer_class = StrategyRuleSerializer
     filter_fields = ("flag",)
+    permission_classes = [IsDashboardUser, HasCapability]
+    environment_lookup = "flag__environment"
+    capability_map = {
+        "create": Capability.FLAG_EDIT,
+        "update": Capability.FLAG_EDIT,
+        "partial_update": Capability.FLAG_EDIT,
+        "destroy": Capability.FLAG_EDIT,
+    }
 
 
-class ConditionViewSet(QueryParamFilterMixin, viewsets.ModelViewSet):
+class ConditionViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ModelViewSet):
     """ViewSet for Condition model."""
     queryset = Condition.objects.all()
     serializer_class = ConditionSerializer
     filter_fields = ("rule",)
+    permission_classes = [IsDashboardUser, HasCapability]
+    environment_lookup = "rule__flag__environment"
+    capability_map = {
+        "create": Capability.FLAG_EDIT,
+        "update": Capability.FLAG_EDIT,
+        "partial_update": Capability.FLAG_EDIT,
+        "destroy": Capability.FLAG_EDIT,
+    }
 
 
 class FlagOverrideViewSet(
+    TenantScopedViewSetMixin,
     QueryParamFilterMixin,
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
@@ -90,6 +152,12 @@ class FlagOverrideViewSet(
         "is_enabled": "is_enabled",
     }
     boolean_filter_fields = ("is_enabled",)
+    permission_classes = [IsDashboardUser, HasCapability]
+    environment_lookup = "flag__environment"
+    capability_map = {
+        "create": Capability.OVERRIDE_MANAGE,
+        "lift": Capability.OVERRIDE_MANAGE,
+    }
 
     def get_queryset(self):
         queryset = super().get_queryset()

@@ -185,8 +185,15 @@ REST_FRAMEWORK = {
         'authentication.jwt_auth.JWTAuthenticationCookie',
         'sdk_api.authentication.SDKAuthentication',
     ],
+    # Fail-closed principal check (spec/access-control: Non-User Principal
+    # Fails Closed): a dashboard route requires a Django `User`, never an
+    # api-key principal. Placed globally so a viewset added later is
+    # protected without its author doing anything -- verified safe for the
+    # SDK surface because every SDK endpoint declares its own
+    # `IsSDKAuthenticated` permission class, and the SSE stream is a plain
+    # Django view that never reaches DRF.
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'tenancy.permissions.IsDashboardUser',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
