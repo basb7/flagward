@@ -397,27 +397,51 @@ Users, Per-Project and Per-Environment Role Grants, Seat Accounting Against the 
       `POST /api/v1/tenancy/effective-capabilities/preview/` (narrows `organization` too, so an
       invisible org 400s the same way any other narrowed FK does).**
 
-## Phase 7 — Slice 7: Frontend (feature work)
+## Phase 7 - Slice 7: Frontend (feature work)
+
+*Split into 7a and 7b after the rebase onto slice 8. 7a is the tenant switcher and
+`?project=` threading; 7b is the members screen, which is a self-contained 718-line page and
+had to be rewired to the membership listing slice 8 added. Shipping them together would have
+been one 1147-line PR, half of it a screen already known to need rework.*
 
 *Traces: UI surface for organization-management requirements; the effective-capability
 preview is the design's mitigation for its top risk (admins misreading union/carve-out).*
 
-- [ ] 7.1 Read `frontend/node_modules/next/dist/docs/` before writing any component (per
-      `frontend/AGENTS.md` — this Next.js version differs from training data).
-- [ ] 7.2 Create `frontend/src/lib/tenant-context.tsx`: org/project state + `localStorage`,
+- [x] 7.1 Read `frontend/node_modules/next/dist/docs/` before writing any component (per
+      `frontend/AGENTS.md` — this Next.js version differs from training data). Read
+      `01-getting-started/03-layouts-and-pages.md` and `05-server-and-client-components.md`;
+      no server-component/route-convention change affects this slice (every touched file is
+      already `'use client'`).
+- [x] 7.2 Create `frontend/src/lib/tenant-context.tsx`: org/project state + `localStorage`,
       modelled on `auth-context.tsx`.
-- [ ] 7.3 Modify `frontend/src/app/dashboard/layout.tsx`: nest `TenantProvider` inside
+- [x] 7.3 Modify `frontend/src/app/dashboard/layout.tsx`: nest `TenantProvider` inside
       `AuthProvider`.
-- [ ] 7.4 Modify `frontend/src/lib/api.ts`: add `project?: string` param on
+- [x] 7.4 Modify `frontend/src/lib/api.ts`: add `project?: string` param on
       `environmentsApi.list`, `flagsApi.list`, and all four `analyticsApi` functions via the
-      existing `buildQuery`; add tenancy + members API calls.
-- [ ] 7.5 Modify `frontend/src/components/layout/dashboard-nav.tsx`: org/project switcher,
+      existing `buildQuery`; add tenancy + members API calls. Deviation: also added `project`
+      to the `Environment` interface (the serializer already returns it) and a `project`
+      field to `environmentsApi.create` (the model has required it since slice 4; the create
+      dialog had no way to supply it before this).
+- [x] 7.5 Modify `frontend/src/components/layout/dashboard-nav.tsx`: org/project switcher,
       Members nav entry.
-- [ ] 7.6 Create `frontend/src/app/dashboard/members/page.tsx`: additive grants list (never a
+- [ ] 7.6 (7b) Create `frontend/src/app/dashboard/members/page.tsx`: additive grants list (never a
       checkbox grid — union cannot carve out) + effective-capability preview against 6.10's
-      endpoint.
-- [ ] 7.7 Modify the 6 pages under `frontend/src/app/dashboard/{page,environments,flags,
+      endpoint. Deviation (backend gap, not fixed here): `OrganizationMembershipViewSet`,
+      `ProjectMembershipViewSet` and `EnvironmentMembershipViewSet` originally exposed no list
+      endpoint, so this screen could only show members created in the current session. Slice 8
+      added scoped listing to all three, and the session-local workaround and its in-UI
+      limitation notice were removed.
+- [x] 7.7 Modify the 6 pages under `frontend/src/app/dashboard/{page,environments,flags,
       flags/[id]/rules,monitoring}` to read `currentProject` and forward `?project=` on the
+      wire only (not in the app's own URLs). `flags/[id]/rules/page.tsx` needed no change - it
+      operates on one already tenant-scoped flag and calls no project-scoped list endpoint.
+      The client-side filtering fallback this task originally needed was removed once slice 8
+      wired the real `?project=` filter into `EnvironmentViewSet`/`FeatureFlagViewSet`.
+- [x] 7.8 Ran `npm run lint && npm run build` in `frontend/` — both green. Manual confirmation
+      in a running app NOT performed (no browser available to this agent) — unverified:
+      switching project actually re-filtering the 6 pages' lists in a live session, and a
+      proposed grant's preview matching the capability set observed after saving.
+
       wire only (not in the app's own URLs).
 - [ ] 7.8 Run `npm run lint && npm run build` in `frontend/`; manually confirm switching
       project re-filters lists, and a proposed grant's preview matches the capability set

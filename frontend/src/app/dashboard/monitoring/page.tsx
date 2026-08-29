@@ -56,6 +56,7 @@ import {
   type SDKRegistration,
   sdkRegistrationsApi,
 } from '@/lib/api';
+import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 import { formatRelativeTime, formatTimestamp } from '@/lib/utils';
 
@@ -79,6 +80,7 @@ function isStale(lastSeenAt: string, windowMinutes: number) {
 
 export default function MonitoringPage() {
   const { success, error: showError } = useToast();
+  const { currentProject } = useTenant();
 
   const [panel, setPanel] = useState<Panel>('sdks');
   const [environment, setEnvironment] = useState('');
@@ -109,10 +111,21 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     environmentsApi
-      .list()
-      .then((response) => setEnvironments(response.results))
+      .list({ project: currentProject?.id })
+      .then((response) =>
+        setEnvironments(
+          // The backend does not yet filter environments by `?project=`;
+          // narrow client-side using the `project` field the serializer
+          // already returns.
+          currentProject
+            ? response.results.filter(
+                (env) => env.project === currentProject.id,
+              )
+            : response.results,
+        ),
+      )
       .catch(() => undefined);
-  }, []);
+  }, [currentProject]);
 
   const load = useCallback(async () => {
     setIsRefreshing(true);
@@ -125,7 +138,7 @@ export default function MonitoringPage() {
         overridesRes,
         flagsRes,
       ] = await Promise.all([
-        analyticsApi.sdkHealth(scope),
+        analyticsApi.sdkHealth({ ...scope, project: currentProject?.id }),
         sdkRegistrationsApi.list(scope),
         evaluationsApi.list({
           ...scope,
@@ -136,7 +149,7 @@ export default function MonitoringPage() {
         overridesApi.list(scope),
         // Refetched here too: an override changes flag state, so a cached
         // flag list would keep showing the state the override just replaced.
-        flagsApi.list(),
+        flagsApi.list({ project: currentProject?.id }),
       ]);
 
       setHealth(healthRes);
@@ -153,7 +166,14 @@ export default function MonitoringPage() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [environment, evaluationsPage, flagFilter, resultFilter, showError]);
+  }, [
+    environment,
+    evaluationsPage,
+    flagFilter,
+    resultFilter,
+    showError,
+    currentProject,
+  ]);
 
   useEffect(() => {
     load();

@@ -47,12 +47,14 @@ import {
   flagsApi,
   overridesApi,
 } from '@/lib/api';
+import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 import { cn } from '@/lib/utils';
 
 export default function FlagsPage() {
   const router = useRouter();
   const { success, error: showError } = useToast();
+  const { currentProject } = useTenant();
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,8 +72,8 @@ export default function FlagsPage() {
   const loadData = useCallback(async () => {
     try {
       const [flagsRes, envsRes] = await Promise.all([
-        flagsApi.list(),
-        environmentsApi.list(),
+        flagsApi.list({ project: currentProject?.id }),
+        environmentsApi.list({ project: currentProject?.id }),
       ]);
       setFlags(flagsRes.results);
       setEnvironments(envsRes.results);
@@ -80,7 +82,7 @@ export default function FlagsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentProject]);
 
   useEffect(() => {
     loadData();

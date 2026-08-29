@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/lib/auth-context';
+import { useTenant } from '@/lib/tenant-context';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -22,6 +23,7 @@ const TABS = [
 
 export function DashboardNav() {
   const { user, logout } = useAuth();
+  const { projects, currentProject, setCurrentProject } = useTenant();
   const pathname = usePathname();
 
   const isActive = (tab: (typeof TABS)[number]) =>
@@ -42,26 +44,48 @@ export function DashboardNav() {
             </span>
           </Link>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-2 text-muted-foreground hover:text-foreground"
-                />
-              }
-            >
-              <User className="size-4" />
-              <span className="max-w-32 truncate">{user?.username}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={logout} className="text-destructive">
-                <LogOut className="mr-2 size-4" />
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            {projects.length > 0 ? (
+              <select
+                aria-label="Project"
+                className="h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground"
+                value={currentProject?.id ?? ''}
+                onChange={(event) => {
+                  const project =
+                    projects.find((item) => item.id === event.target.value) ??
+                    null;
+                  setCurrentProject(project);
+                }}
+              >
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 text-muted-foreground hover:text-foreground"
+                  />
+                }
+              >
+                <User className="size-4" />
+                <span className="max-w-32 truncate">{user?.username}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={logout} className="text-destructive">
+                  <LogOut className="mr-2 size-4" />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         <nav
