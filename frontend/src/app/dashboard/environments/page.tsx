@@ -31,61 +31,47 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  type Environment,
-  environmentsApi,
-  type Project,
-  projectsApi,
-} from '@/lib/api';
+import { type Environment, environmentsApi } from '@/lib/api';
+import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 
 export default function EnvironmentsPage() {
   const { success, error: showError } = useToast();
+  const { currentProject } = useTenant();
   const [environments, setEnvironments] = useState<Environment[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [newEnv, setNewEnv] = useState({ name: '', key: '', project: '' });
+  const [newEnv, setNewEnv] = useState({ name: '', key: '' });
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const loadEnvironments = useCallback(async () => {
     try {
-      const response = await environmentsApi.list();
+      const response = await environmentsApi.list({
+        project: currentProject?.id,
+      });
       setEnvironments(response.results);
     } catch (error) {
       console.error('Failed to load environments:', error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
-
-  const loadProjects = useCallback(async () => {
-    try {
-      const response = await projectsApi.list();
-      setProjects(response.results);
-      setNewEnv((current) =>
-        current.project
-          ? current
-          : { ...current, project: response.results[0]?.id ?? '' },
-      );
-    } catch (error) {
-      console.error('Failed to load projects:', error);
-    }
-  }, []);
+  }, [currentProject]);
 
   useEffect(() => {
     loadEnvironments();
-    loadProjects();
-  }, [loadEnvironments, loadProjects]);
+  }, [loadEnvironments]);
 
   const handleCreate = async () => {
-    if (!newEnv.project) return;
+    if (!currentProject) {
+      showError('Select a project before creating an environment');
+      return;
+    }
     setIsSaving(true);
     try {
-      await environmentsApi.create(newEnv);
+      await environmentsApi.create({ ...newEnv, project: currentProject.id });
       setIsDialogOpen(false);
-      setNewEnv({ name: '', key: '', project: newEnv.project });
+      setNewEnv({ name: '', key: '' });
       loadEnvironments();
       success('Environment created successfully');
     } catch (err) {
@@ -141,33 +127,12 @@ export default function EnvironmentsPage() {
                   Create Environment
                 </DialogTitle>
                 <DialogDescription className="text-muted-foreground">
-                  Add a new environment for your feature flags.
+                  {currentProject
+                    ? `Add a new environment to ${currentProject.name}.`
+                    : 'Select a project from the switcher above first.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="env-project"
-                    className="text-muted-foreground"
-                  >
-                    Project
-                  </Label>
-                  <select
-                    id="env-project"
-                    className="h-9 w-full rounded-lg border border-border bg-muted px-2 text-sm text-foreground"
-                    value={newEnv.project}
-                    onChange={(e) =>
-                      setNewEnv({ ...newEnv, project: e.target.value })
-                    }
-                  >
-                    <option value="">Select a project</option>
-                    {projects.map((proj) => (
-                      <option key={proj.id} value={proj.id}>
-                        {proj.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="name" className="text-muted-foreground">
                     Name
@@ -204,7 +169,7 @@ export default function EnvironmentsPage() {
                 </Button>
                 <Button
                   onClick={handleCreate}
-                  disabled={isSaving || !newEnv.project}
+                  disabled={isSaving || !currentProject}
                 >
                   {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
                   Create

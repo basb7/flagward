@@ -24,6 +24,7 @@ import {
   environmentsApi,
   type TopFlag,
 } from '@/lib/api';
+import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 
 const RANGES = [
@@ -38,6 +39,7 @@ function formatRate(rate: number | null) {
 
 export default function DashboardPage() {
   const { error: showError } = useToast();
+  const { currentProject } = useTenant();
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [environment, setEnvironment] = useState('');
   const [hours, setHours] = useState<number>(24);
@@ -50,14 +52,28 @@ export default function DashboardPage() {
 
   useEffect(() => {
     environmentsApi
-      .list()
-      .then((response) => setEnvironments(response.results))
+      .list({ project: currentProject?.id })
+      .then((response) =>
+        setEnvironments(
+          // The backend does not yet filter environments by `?project=`
+          // (that endpoint has no such filter today); narrow client-side
+          // using the `project` field the serializer already returns.
+          currentProject
+            ? response.results.filter(
+                (env) => env.project === currentProject.id,
+              )
+            : response.results,
+        ),
+      )
       .catch(() => setEnvironments([]));
-  }, []);
+  }, [currentProject]);
 
   const loadAnalytics = useCallback(async () => {
     try {
-      const scope = environment ? { environment } : {};
+      const scope = {
+        ...(environment ? { environment } : {}),
+        ...(currentProject ? { project: currentProject.id } : {}),
+      };
       const [overviewRes, timeseriesRes, topFlagsRes] = await Promise.all([
         analyticsApi.overview(scope),
         analyticsApi.evaluationsTimeseries({ ...scope, hours }),
@@ -73,7 +89,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [environment, hours, showError]);
+  }, [environment, hours, showError, currentProject]);
 
   useEffect(() => {
     loadAnalytics();

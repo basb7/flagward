@@ -219,9 +219,9 @@ export interface PaginatedResponse<T> {
 }
 
 export const environmentsApi = {
-  list: (page = 1) =>
+  list: (params: { page?: number; project?: string } = {}) =>
     request<PaginatedResponse<Environment>>(
-      `/api/v1/environments/?page=${page}`,
+      `/api/v1/environments/${buildQuery({ page: params.page ?? 1, project: params.project })}`,
     ),
 
   get: (id: string) => request<Environment>(`/api/v1/environments/${id}/`),
@@ -282,8 +282,10 @@ export interface Condition {
 }
 
 export const flagsApi = {
-  list: (page = 1) =>
-    request<PaginatedResponse<FeatureFlag>>(`/api/v1/flags/?page=${page}`),
+  list: (params: { page?: number; project?: string } = {}) =>
+    request<PaginatedResponse<FeatureFlag>>(
+      `/api/v1/flags/${buildQuery({ page: params.page ?? 1, project: params.project })}`,
+    ),
 
   get: (id: string) => request<FeatureFlag>(`/api/v1/flags/${id}/`),
 
@@ -550,25 +552,61 @@ export interface SDKHealth {
 }
 
 export const analyticsApi = {
-  overview: (params: { environment?: string } = {}) =>
+  overview: (params: { environment?: string; project?: string } = {}) =>
     request<AnalyticsOverview>(
       `/api/v1/analytics/overview/${buildQuery(params)}`,
     ),
 
   evaluationsTimeseries: (
-    params: { hours?: number; environment?: string } = {},
+    params: { hours?: number; environment?: string; project?: string } = {},
   ) =>
     request<EvaluationsTimeseries>(
       `/api/v1/analytics/evaluations/timeseries/${buildQuery(params)}`,
     ),
 
   topFlags: (
-    params: { hours?: number; limit?: number; environment?: string } = {},
+    params: {
+      hours?: number;
+      limit?: number;
+      environment?: string;
+      project?: string;
+    } = {},
   ) =>
     request<{ hours: number; limit: number; results: TopFlag[] }>(
       `/api/v1/analytics/flags/top/${buildQuery(params)}`,
     ),
 
-  sdkHealth: (params: { environment?: string } = {}) =>
+  sdkHealth: (params: { environment?: string; project?: string } = {}) =>
     request<SDKHealth>(`/api/v1/analytics/sdks/health/${buildQuery(params)}`),
+};
+
+// Tenancy API: the organizations and projects the tenant switcher reads.
+//
+// Membership, role-grant and capability-preview calls belong to the members
+// screen and land with it.
+export type OrganizationRole = 'ADMIN' | 'USER';
+export type ProjectRole = 'ADMIN' | 'EDITOR' | 'OPERATOR' | 'VIEWER';
+export type EnvironmentRole = 'ADMIN' | 'EDITOR' | 'OPERATOR' | 'VIEWER';
+
+export interface Organization {
+  id: string;
+  name: string;
+  plan: 'COMMUNITY' | 'STARTER' | 'TEAM';
+  created_at: string;
+}
+
+export interface Project {
+  id: string;
+  organization: string;
+  name: string;
+  key: string;
+  created_at: string;
+}
+
+export const tenancyApi = {
+  organizations: () =>
+    request<PaginatedResponse<Organization>>('/api/v1/tenancy/organizations/'),
+
+  projects: () =>
+    request<PaginatedResponse<Project>>('/api/v1/tenancy/projects/'),
 };

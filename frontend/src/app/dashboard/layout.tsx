@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { DashboardNav } from '@/components/layout/dashboard-nav';
 import { Spinner } from '@/components/ui/spinner';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { TenantProvider } from '@/lib/tenant-context';
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -45,7 +46,9 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthProvider>
-      <DashboardContent>{children}</DashboardContent>
+      <TenantProvider>
+        <DashboardContent>{children}</DashboardContent>
+      </TenantProvider>
     </AuthProvider>
   );
 }
