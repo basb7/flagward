@@ -22,9 +22,11 @@ change closed (F3), one level above it.
 """
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -32,6 +34,7 @@ from core_flags.models import Environment
 from tenancy.capabilities import Capability, max_seats, resolve_capabilities
 from tenancy.models import (
     EnvironmentMembership,
+    Invitation,
     Organization,
     OrganizationMembership,
     OrganizationRole,
@@ -44,6 +47,8 @@ from .serializers import (
     EffectiveCapabilitiesPreviewSerializer,
     EnvironmentMembershipSerializer,
     EnvironmentMembershipUpdateSerializer,
+    InvitationCreateSerializer,
+    InvitationSerializer,
     OrganizationMemberCreateSerializer,
     OrganizationMembershipSerializer,
     OrganizationMembershipUpdateSerializer,
@@ -388,3 +393,131 @@ class EffectiveCapabilitiesPreviewView(APIView):
         ]
 
         return Response({"environments": results})
+
+
+class InvitationViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Create, list, and revoke single-use organization invitation links.
+
+    Unlike `OrganizationMembershipViewSet`, listing here is scoped by the
+    same `org.manage_members` capability creation requires, not by
+    `ORG_VIEW` -- an invitation is administration data (who it targets, its
+    live link), not ordinary membership visibility, so every action on this
+    viewset shares the one gate, all through `get_queryset` (Layer 1: an
+    organization the requester cannot manage is a 404, same as an invisible
+    one is elsewhere in this app).
+    """
+
+    queryset = Invitation.objects.select_related("organization", "created_by", "accepted_by")
+    serializer_class = InvitationSerializer
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return InvitationCreateSerializer
+        return InvitationSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            organization__in=orgs_with(self.request.user, Capability.ORG_MANAGE_MEMBERS)
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        invitation, raw_token = Invitation.issue(
+            organization=serializer.validated_data["organization"],
+            role=serializer.validated_data["role"],
+            created_by=request.user,
+        )
+        data = InvitationSerializer(invitation).data
+        # The one and only place the plain token is ever returned -- it is
+        # never stored, and this response is never reachable again.
+        data["token"] = raw_token
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def revoke(self, request, pk=None):
+        invitation = self.get_object()
+        if invitation.revoked_at is None and invitation.accepted_at is None:
+            invitation.revoked_at = timezone.now()
+            invitation.save(update_fields=["revoked_at"])
+        return Response(InvitationSerializer(invitation).data)
+
+
+class InvitationPreviewView(APIView):
+    """
+    GET /invitations/{token}/preview/ -- reachable without authentication
+    (spec: someone not yet logged in must be able to see what they were
+    invited to before registering or logging in).
+
+    Every unusable token -- unknown, expired, revoked, or already accepted --
+    answers with the same generic 404. Distinguishing them here would let a
+    caller probe which tokens exist (or existed) with no authentication at
+    all; `InvitationAcceptView` affords that distinction because reaching it
+    already requires holding the link and being logged in.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        invitation = Invitation.for_token(token)
+        if invitation is None or invitation.is_revoked or invitation.is_accepted or invitation.is_expired:
+            raise NotFound("Invitation not found or no longer valid.")
+        return Response({"organization_name": invitation.organization.name, "role": invitation.role})
+
+
+class InvitationAcceptView(APIView):
+    """
+    POST /invitations/{token}/accept/ -- requires authentication (default
+    `IsDashboardUser`). Creates the `OrganizationMembership` for the
+    requesting user with the invitation's role, marks the invitation used,
+    and enforces the plan's seat limit here -- this is the moment the seat
+    is actually consumed, mirroring `OrganizationViewSet.members`.
+    """
+
+    def post(self, request, token):
+        resolved = Invitation.for_token(token)
+        if resolved is None:
+            return Response({"error": "invitation_not_found"}, status=status.HTTP_404_NOT_FOUND)
+
+        with transaction.atomic():
+            # select_for_update() serializes this accept against a concurrent
+            # one for the same token -- without the row lock, two requests
+            # can both observe "not yet accepted" and both commit.
+            invitation = Invitation.objects.select_for_update().select_related("organization").get(
+                pk=resolved.pk
+            )
+
+            if invitation.is_revoked:
+                return Response({"error": "invitation_revoked"}, status=status.HTTP_410_GONE)
+            if invitation.is_accepted:
+                return Response({"error": "invitation_already_used"}, status=status.HTTP_409_CONFLICT)
+            if invitation.is_expired:
+                return Response({"error": "invitation_expired"}, status=status.HTTP_410_GONE)
+
+            if OrganizationMembership.objects.filter(
+                organization=invitation.organization, user=request.user
+            ).exists():
+                return Response({"error": "already_a_member"}, status=status.HTTP_409_CONFLICT)
+
+            # Same locked seat check as OrganizationViewSet.members: the row
+            # lock serializes the count against the insert.
+            locked_organization = Organization.objects.select_for_update().get(pk=invitation.organization_id)
+            limit = max_seats(locked_organization.plan)
+            if limit is not None:
+                seat_count = OrganizationMembership.objects.filter(organization=locked_organization).count()
+                if seat_count >= limit:
+                    return Response({"error": "seat_limit_reached"}, status=status.HTTP_400_BAD_REQUEST)
+
+            membership = OrganizationMembership.objects.create(
+                organization=locked_organization, user=request.user, role=invitation.role
+            )
+            invitation.accepted_by = request.user
+            invitation.accepted_at = timezone.now()
+            invitation.save(update_fields=["accepted_by", "accepted_at"])
+
+        return Response(OrganizationMembershipSerializer(membership).data, status=status.HTTP_201_CREATED)

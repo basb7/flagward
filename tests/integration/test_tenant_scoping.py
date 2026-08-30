@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 
 from core_flags.api.serializers import FeatureFlagSerializer
 from core_flags.models import Environment, FeatureFlag
-from tenancy.models import EnvironmentRole, OrganizationRole, ProjectRole
+from tenancy.models import EnvironmentRole, Invitation, OrganizationRole, ProjectRole
 
 
 @pytest.fixture
@@ -344,3 +344,37 @@ class TestNoSuperuserBypass:
 
         assert response.status_code == 200
         assert response.data["environments"]["total"] == 0
+
+    def test_superuser_cannot_create_invitation_in_a_foreign_organization(self, organization):
+        client = APIClient()
+        client.force_authenticate(user=self._superuser_without_membership())
+
+        response = client.post(
+            "/api/v1/tenancy/invitations/",
+            {"organization": str(organization.id), "role": OrganizationRole.USER},
+            format="json",
+        )
+
+        assert response.status_code in (400, 403)
+        assert Invitation.objects.count() == 0
+
+    def test_superuser_sees_no_foreign_invitations(self, organization):
+        Invitation.issue(organization=organization, role=OrganizationRole.USER, created_by=None)
+        client = APIClient()
+        client.force_authenticate(user=self._superuser_without_membership())
+
+        response = client.get("/api/v1/tenancy/invitations/")
+
+        assert response.status_code == 200
+        assert response.data["count"] == 0
+
+    def test_superuser_cannot_revoke_a_foreign_invitation(self, organization):
+        invitation, _ = Invitation.issue(organization=organization, role=OrganizationRole.USER, created_by=None)
+        client = APIClient()
+        client.force_authenticate(user=self._superuser_without_membership())
+
+        response = client.post(f"/api/v1/tenancy/invitations/{invitation.id}/revoke/")
+
+        assert response.status_code == 404
+        invitation.refresh_from_db()
+        assert invitation.revoked_at is None

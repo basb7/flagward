@@ -5,6 +5,7 @@ from django.contrib import admin
 
 from .models import (
     EnvironmentMembership,
+    Invitation,
     Organization,
     OrganizationMembership,
     Project,
@@ -45,3 +46,11 @@ class EnvironmentMembershipAdmin(admin.ModelAdmin):
     list_display = ("user", "environment", "role", "created_at")
     list_filter = ("role", "environment")
     search_fields = ("user__username", "environment__name")
+
+
+@admin.register(Invitation)
+class InvitationAdmin(admin.ModelAdmin):
+    list_display = ("organization", "role", "created_by", "accepted_by", "expires_at", "revoked_at", "created_at")
+    list_filter = ("role", "organization")
+    search_fields = ("organization__name", "created_by__username", "accepted_by__username")
+    readonly_fields = ("token_hash",)
