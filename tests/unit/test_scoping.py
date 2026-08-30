@@ -46,7 +46,21 @@ def test_environments_with_matches_resolve_capabilities(
     if env_role is not None:
         grant(user, environment=environment, role=env_role)
 
-    expected = resolve_capabilities(org_role, project_role, env_role)
+    # Layer 2 (defence-in-depth alongside the organization-membership removal
+    # cascade): a standalone ProjectMembership/EnvironmentMembership row only
+    # counts when an OrganizationMembership row exists for this user in this
+    # organization -- any role. `org_role is None` here means literally no
+    # such row was created above, so any project_role/env_role granted is an
+    # orphan and must resolve to nothing, exactly like `resolve_capabilities`
+    # would answer had those roles never been passed in either. When
+    # org_role is not None, the prerequisite is satisfied and behaviour is
+    # unchanged from the plain union `resolve_capabilities` already computes.
+    org_membership_exists = org_role is not None
+    expected = resolve_capabilities(
+        org_role,
+        project_role if org_membership_exists else None,
+        env_role if org_membership_exists else None,
+    )
 
     for capability in ALL_CAPABILITIES:
         is_visible = environments_with(user, capability).filter(pk=environment.pk).exists()
@@ -95,14 +109,34 @@ def test_unknown_capability_raises_on_all_three_helpers(user):
 
 
 @pytest.mark.django_db
-def test_project_view_narrow_special_case(project, environment, user, grant):
+def test_project_view_narrow_special_case(organization, project, environment, user, grant):
     """
     design D4's documented asymmetry: an EnvironmentMembership alone (no
     ProjectMembership) still makes the parent project visible under
     `project.view` — this is the one branch `projects_with` special-cases.
+
+    Requires an organization membership too (Layer 2): the asymmetry is
+    about ProjectMembership being unnecessary, not about the
+    organization-membership prerequisite being waived.
     """
+    grant(user, org=organization, role=OrganizationRole.USER)
     grant(user, environment=environment, role=EnvironmentRole.VIEWER)
 
     assert projects_with(user, Capability.PROJECT_VIEW).filter(pk=project.pk).exists()
     # And it grants nothing else at the project level.
     assert not projects_with(user, Capability.PROJECT_MANAGE).filter(pk=project.pk).exists()
+
+
+@pytest.mark.django_db
+def test_project_view_narrow_special_case_requires_organization_membership(
+    project, environment, user, grant
+):
+    """
+    Layer 2's own coverage of the narrow special case above: the same
+    EnvironmentMembership, with no OrganizationMembership backing it at all,
+    must not make the parent project visible either -- an orphan grants
+    nothing, not even the narrow implication.
+    """
+    grant(user, environment=environment, role=EnvironmentRole.VIEWER)
+
+    assert not projects_with(user, Capability.PROJECT_VIEW).filter(pk=project.pk).exists()

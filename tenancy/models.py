@@ -5,7 +5,9 @@ role-based membership tables that grant access at each level.
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 
 class Plan(models.TextChoices):
@@ -165,3 +167,42 @@ class EnvironmentMembership(models.Model):
 
     def __str__(self):
         return f"{self.user} @ {self.environment} ({self.role})"
+
+
+@receiver(post_delete, sender=OrganizationMembership)
+def _revoke_grants_scoped_to_the_removed_organization(sender, instance, **kwargs):
+    """
+    Removal cascade (slice 6b's Layer 1): losing an `OrganizationMembership`
+    must also lose every `ProjectMembership`/`EnvironmentMembership` the same
+    user holds *inside that organization* -- otherwise a project or
+    environment grant outlives the membership that justified it, and keeps
+    working.
+
+    This is a `post_delete` signal on the model, not an override of
+    `OrganizationMembership.delete()` and not logic living in the DRF view,
+    because `QuerySet.delete()` (what Django admin's "Delete selected" bulk
+    action uses) never calls a model's `delete()` -- an override would only
+    catch the single-object path (the API view, `instance.delete()` in a
+    script) and leave the admin's bulk action, and any future bulk deletion
+    written the same way, free to reopen this exact hole. A `post_delete`
+    signal is dispatched by Django's `Collector` for every row it deletes,
+    single or bulk alike -- and registering a receiver here also disables
+    the "fast delete" SQL optimisation for this model, so the collector is
+    guaranteed to fetch full instances and fire this signal once per row
+    rather than issuing one bare `DELETE ... WHERE pk IN (...)` with no
+    signal at all.
+
+    Scoped to `instance.organization_id`: grants in the user's *other*
+    organizations are untouched. Wrapped in its own `transaction.atomic()`
+    so the cascade is all-or-nothing regardless of whether the caller (a
+    view, the admin, a script) already opened a transaction of its own --
+    nested atomic blocks are just savepoints.
+    """
+    with transaction.atomic():
+        ProjectMembership.objects.filter(
+            user_id=instance.user_id, project__organization_id=instance.organization_id
+        ).delete()
+        EnvironmentMembership.objects.filter(
+            user_id=instance.user_id,
+            environment__project__organization_id=instance.organization_id,
+        ).delete()

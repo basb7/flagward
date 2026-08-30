@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 
 from core_flags.api.serializers import FeatureFlagSerializer
 from core_flags.models import Environment, FeatureFlag
-from tenancy.models import EnvironmentRole, ProjectRole
+from tenancy.models import EnvironmentRole, OrganizationRole, ProjectRole
 
 
 @pytest.fixture
@@ -46,6 +46,7 @@ class TestCrossTenantIsolation:
         assert response.status_code == 404
 
     def test_cross_tenant_fk_write_returns_400(self, api_client, user, grant, tenant_a, tenant_b):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
         grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
         client = api_client(user)
 
@@ -71,6 +72,7 @@ class TestCrossTenantIsolation:
     def test_list_never_includes_foreign_tenant_rows(
         self, api_client, user, grant, tenant_a, tenant_b
     ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
         grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
         client = api_client(user)
 
@@ -134,8 +136,9 @@ class TestEnvironmentSerializerProjectNarrowed:
     """spec: Root-level cross-tenant write (F3); tasks 4.9-4.11."""
 
     def test_foreign_project_rejected_on_create(
-        self, api_client, user, grant, project, make_project
+        self, api_client, user, grant, organization, project, make_project
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         foreign_project = make_project(name="Foreign", key="foreign")
         client = api_client(user)
@@ -149,7 +152,8 @@ class TestEnvironmentSerializerProjectNarrowed:
         assert response.status_code == 400
         assert not Environment.objects.filter(project=foreign_project).exists()
 
-    def test_own_project_accepted_on_create(self, api_client, user, grant, project):
+    def test_own_project_accepted_on_create(self, api_client, user, grant, organization, project):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         client = api_client(user)
 
@@ -163,8 +167,9 @@ class TestEnvironmentSerializerProjectNarrowed:
         assert Environment.objects.filter(project=project, key="prod").exists()
 
     def test_move_environment_to_foreign_project_rejected(
-        self, api_client, user, grant, environment, make_project
+        self, api_client, user, grant, organization, environment, make_project
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, environment=environment, role=EnvironmentRole.ADMIN)
         foreign_project = make_project(name="Foreign", key="foreign")
         client = api_client(user)
@@ -188,6 +193,7 @@ class TestEnvironmentSerializerProjectNarrowed:
         the frontend was sending; `test_foreign_project_rejected_on_create`
         above covers a *present-but-foreign* project, not an *absent* one.
         """
+        grant(user, org=project.organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         client = api_client(user)
 
@@ -235,6 +241,8 @@ class TestProjectQueryParamFilter:
     """
 
     def test_environments_filtered_by_project(self, api_client, user, grant, tenant_a, tenant_b):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, org=tenant_b["project"].organization, role=OrganizationRole.USER)
         grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
         grant(user, environment=tenant_b["environment"], role=EnvironmentRole.VIEWER)
         client = api_client(user)
@@ -246,6 +254,8 @@ class TestProjectQueryParamFilter:
         assert ids == {str(tenant_a["environment"].id)}
 
     def test_flags_filtered_by_project(self, api_client, user, grant, tenant_a, tenant_b):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, org=tenant_b["project"].organization, role=OrganizationRole.USER)
         grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
         grant(user, environment=tenant_b["environment"], role=EnvironmentRole.VIEWER)
         client = api_client(user)

@@ -46,9 +46,22 @@ def orgs_with(user: User, capability: str) -> QuerySet[Organization]:
 def projects_with(user: User, capability: str) -> QuerySet[Project]:
     """Projects where `user` holds `capability`, cascading from org role too."""
     validate_capability(capability)
+    # Layer 2's own enforcement (defence-in-depth alongside the removal
+    # cascade in tenancy.models): a standalone ProjectMembership/
+    # EnvironmentMembership row only counts when the user still belongs to
+    # that project's organization at all -- any role. Without this, an
+    # orphan (left behind by a bug, a direct database edit, or a future
+    # migration -- not just a removal this app forgot to cascade) would
+    # silently keep granting access. `user_org_ids` is a scalar subquery
+    # over OrganizationMembership's own columns; joining it against Project
+    # happens inside the ProjectMembership subquery below, never in the
+    # outer Project query's own alias_map, so the no-join invariant survives.
+    user_org_ids = OrganizationMembership.objects.filter(user=user).values("organization_id")
     predicate = Q(organization__in=orgs_with(user, capability).values("pk")) | Q(
         pk__in=ProjectMembership.objects.filter(
-            user=user, role__in=PROJECT_ROLES_GRANTING[capability]
+            user=user,
+            role__in=PROJECT_ROLES_GRANTING[capability],
+            project__organization__in=user_org_ids,
         ).values("project_id")
     )
     if capability == Capability.PROJECT_VIEW:
@@ -58,10 +71,13 @@ def projects_with(user: User, capability: str) -> QuerySet[Project]:
         # resolve_capabilities' narrow implication). Still a scalar subquery
         # on Project's own pk, so the no-join invariant survives it. No other
         # capability takes this branch: an environment grant implies nothing
-        # else at the project level.
+        # else at the project level. Same organization-membership prerequisite
+        # as above -- an orphaned EnvironmentMembership implies nothing either.
         predicate |= Q(
             pk__in=Environment.objects.filter(
-                pk__in=EnvironmentMembership.objects.filter(user=user).values("environment_id")
+                pk__in=EnvironmentMembership.objects.filter(
+                    user=user, environment__project__organization__in=user_org_ids
+                ).values("environment_id")
             ).values("project_id")
         )
     return Project.objects.filter(predicate)
@@ -70,11 +86,16 @@ def projects_with(user: User, capability: str) -> QuerySet[Project]:
 def environments_with(user: User, capability: str) -> QuerySet[Environment]:
     """Environments where `user` holds `capability`, cascading from org/project role too."""
     validate_capability(capability)
+    # See projects_with: the same organization-membership prerequisite for a
+    # standalone EnvironmentMembership row.
+    user_org_ids = OrganizationMembership.objects.filter(user=user).values("organization_id")
     return Environment.objects.filter(
         Q(project__in=projects_with(user, capability).values("pk"))
         | Q(
             pk__in=EnvironmentMembership.objects.filter(
-                user=user, role__in=ENV_ROLES_GRANTING[capability]
+                user=user,
+                role__in=ENV_ROLES_GRANTING[capability],
+                environment__project__organization__in=user_org_ids,
             ).values("environment_id")
         )
     )

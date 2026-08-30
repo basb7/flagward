@@ -11,7 +11,7 @@ from django.core.exceptions import ImproperlyConfigured
 from rest_framework.test import APIRequestFactory
 
 from tenancy.capabilities import Capability
-from tenancy.models import EnvironmentRole
+from tenancy.models import EnvironmentRole, OrganizationRole
 from tenancy.permissions import HasCapability, IsDashboardUser, TenantScopedViewSetMixin
 
 factory = APIRequestFactory()
@@ -73,6 +73,11 @@ class TestHasCapability:
         assert HasCapability().has_permission(request, view) is False
 
     def test_unsafe_method_allowed_when_capability_held_somewhere(self, environment, user, grant):
+        # `has_permission` is backed by `environments_with`, which requires
+        # (Layer 2) that the user still belong to the environment's
+        # organization -- unlike `capabilities_for` below, which the
+        # object-permission tests deliberately exercise in isolation.
+        grant(user, org=environment.project.organization, role=OrganizationRole.USER)
         grant(user, environment=environment, role=EnvironmentRole.EDITOR)
         request = factory.post("/api/v1/flags/")
         request.user = user

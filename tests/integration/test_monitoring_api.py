@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from core_flags.models import Environment, FeatureFlag, FlagOverride
 from sdk_api.models import EvaluationLog, SDKRegistration, SDKType
-from tenancy.models import ProjectRole
+from tenancy.models import OrganizationRole, ProjectRole
 
 
 @pytest.fixture
@@ -19,6 +19,7 @@ def client(project, grant):
     """Authenticated API client, holding project ADMIN on `project`."""
     api_client = APIClient()
     user = get_user_model().objects.create_user(username="dash", password="secret")
+    grant(user, org=project.organization, role=OrganizationRole.USER)
     grant(user, project=project, role=ProjectRole.ADMIN)
     api_client.force_authenticate(user=user)
     return api_client
