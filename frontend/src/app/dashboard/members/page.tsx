@@ -1,6 +1,6 @@
 'use client';
 
-import { Info, Plus, ShieldAlert, UserPlus } from 'lucide-react';
+import { Info, Lock, Plus, ShieldAlert, UserPlus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -92,6 +92,7 @@ export default function MembersPage() {
   const { success, error: showError } = useToast();
   const {
     currentOrganization,
+    projects,
     currentProject,
     isLoading: isTenantLoading,
   } = useTenant();
@@ -103,6 +104,16 @@ export default function MembersPage() {
   const [projectGrants, setProjectGrants] = useState<ProjectMembership[]>([]);
   const [envGrants, setEnvGrants] = useState<EnvironmentMembership[]>([]);
   const [isLoadingGrants, setIsLoadingGrants] = useState(true);
+
+  // Organization-wide (not just `currentProject`) grants, kept only to tell
+  // apart a member who has never been granted anything from one whose access
+  // lives in a different project of this same organization -- a person can
+  // create a member and still see nobody flagged just because they happened
+  // to be looking at project A while the grant landed on project B.
+  const [orgProjectGrants, setOrgProjectGrants] = useState<ProjectMembership[]>(
+    [],
+  );
+  const [orgEnvGrants, setOrgEnvGrants] = useState<EnvironmentMembership[]>([]);
 
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [isSavingMember, setIsSavingMember] = useState(false);
@@ -202,18 +213,76 @@ export default function MembersPage() {
     loadProjectGrants();
   }, [loadProjectGrants]);
 
+  const loadOrgWideGrants = useCallback(async () => {
+    if (!currentOrganization || projects.length === 0) {
+      setOrgProjectGrants([]);
+      setOrgEnvGrants([]);
+      return;
+    }
+    try {
+      const projectIds = new Set(projects.map((project) => project.id));
+      const [
+        projectMembershipsRes,
+        environmentsRes,
+        environmentMembershipsRes,
+      ] = await Promise.all([
+        projectMembershipsApi.list(),
+        environmentsApi.list(),
+        environmentMembershipsApi.list(),
+      ]);
+      const orgEnvironmentIds = new Set(
+        environmentsRes.results
+          .filter((env) => projectIds.has(env.project))
+          .map((env) => env.id),
+      );
+      setOrgProjectGrants(
+        projectMembershipsRes.results.filter((grant) =>
+          projectIds.has(grant.project),
+        ),
+      );
+      setOrgEnvGrants(
+        environmentMembershipsRes.results.filter((grant) =>
+          orgEnvironmentIds.has(grant.environment),
+        ),
+      );
+    } catch {
+      setOrgProjectGrants([]);
+      setOrgEnvGrants([]);
+    }
+  }, [currentOrganization, projects]);
+
+  useEffect(() => {
+    loadOrgWideGrants();
+  }, [loadOrgWideGrants]);
+
+  const membersWithoutAccess = useMemo(() => {
+    const withAccess = new Set([
+      ...orgProjectGrants.map((grant) => grant.user),
+      ...orgEnvGrants.map((grant) => grant.user),
+    ]);
+    return new Set(
+      orgMembers
+        .filter((member) => !withAccess.has(member.user))
+        .map((member) => member.id),
+    );
+  }, [orgMembers, orgProjectGrants, orgEnvGrants]);
+
   const grantRows = useMemo(() => {
     const fromProjects = projectGrants.map((grant) => ({
       id: grant.id,
+      user: grant.user,
       username: grant.username,
       level: 'Project' as const,
+      targetId: grant.project,
       target: currentProject?.name ?? grant.project,
       role: grant.role as ProjectRole | EnvironmentRole,
     }));
     const fromEnvironments = envGrants.map((grant) => ({
       id: grant.id,
+      user: grant.user,
       username: grant.username,
       level: 'Environment' as const,
+      targetId: grant.environment,
       target:
         environments.find((env) => env.id === grant.environment)?.name ??
         grant.environment,
@@ -233,24 +302,53 @@ export default function MembersPage() {
   );
 
   const openGrantDialog = useCallback(
-    (member: OrganizationMembership) => {
+    (member: OrganizationMembership, prefill?: GrantForm) => {
       setActiveMember({
         membershipId: member.id,
         userId: member.user,
         username: member.username,
         orgRole: member.role,
       });
-      setGrantForm({
-        level: 'project',
-        targetId: currentProject?.id ?? '',
-        role: 'VIEWER',
-      });
+      setGrantForm(
+        prefill ?? {
+          level: 'project',
+          targetId: currentProject?.id ?? '',
+          role: 'VIEWER',
+        },
+      );
       setPreviewResult(null);
       setPreviewedSignature(null);
       setIsGrantDialogOpen(true);
     },
     [currentProject],
   );
+
+  /**
+   * The grant already held by `activeMember` at the form's current
+   * level/target, if any -- re-POSTing an existing (project, user) or
+   * (environment, user) pair collides with the row's unique constraint
+   * (`non_field_errors: ... must make a unique set`). Its presence switches
+   * the confirm action from create to update.
+   */
+  const existingMembershipId = useMemo(() => {
+    if (!activeMember) return null;
+    if (grantForm.level === 'project') {
+      return (
+        projectGrants.find(
+          (grant) =>
+            grant.user === activeMember.userId &&
+            grant.project === grantForm.targetId,
+        )?.id ?? null
+      );
+    }
+    return (
+      envGrants.find(
+        (grant) =>
+          grant.user === activeMember.userId &&
+          grant.environment === grantForm.targetId,
+      )?.id ?? null
+    );
+  }, [activeMember, grantForm, projectGrants, envGrants]);
 
   const handleAddMember = async () => {
     if (!currentOrganization) return;
@@ -323,12 +421,27 @@ export default function MembersPage() {
       return;
     setIsSavingGrant(true);
     try {
+      // An existing grant is changed in place (PATCH), never re-created:
+      // re-POSTing the same (project, user) or (environment, user) pair
+      // collides with the row's unique constraint.
       if (grantForm.level === 'project') {
-        await projectMembershipsApi.create({
-          project: currentProject.id,
-          user: activeMember.userId,
-          role: grantForm.role as ProjectRole,
-        });
+        if (existingMembershipId) {
+          await projectMembershipsApi.updateRole(
+            existingMembershipId,
+            grantForm.role as ProjectRole,
+          );
+        } else {
+          await projectMembershipsApi.create({
+            project: currentProject.id,
+            user: activeMember.userId,
+            role: grantForm.role as ProjectRole,
+          });
+        }
+      } else if (existingMembershipId) {
+        await environmentMembershipsApi.updateRole(
+          existingMembershipId,
+          grantForm.role as EnvironmentRole,
+        );
       } else {
         await environmentMembershipsApi.create({
           environment: grantForm.targetId,
@@ -336,13 +449,35 @@ export default function MembersPage() {
           role: grantForm.role as EnvironmentRole,
         });
       }
-      success(`Granted ${grantForm.role} to ${activeMember.username}`);
+      success(
+        `${existingMembershipId ? 'Updated' : 'Granted'} ${grantForm.role} for ${activeMember.username}`,
+      );
       setIsGrantDialogOpen(false);
       loadProjectGrants();
+      loadOrgWideGrants();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to grant role');
     } finally {
       setIsSavingGrant(false);
+    }
+  };
+
+  const handleRevoke = async (row: {
+    id: string;
+    level: 'Project' | 'Environment';
+    username: string;
+  }) => {
+    try {
+      if (row.level === 'Project') {
+        await projectMembershipsApi.remove(row.id);
+      } else {
+        await environmentMembershipsApi.remove(row.id);
+      }
+      success(`Revoked ${row.level.toLowerCase()} access for ${row.username}`);
+      loadProjectGrants();
+      loadOrgWideGrants();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to revoke role');
     }
   };
 
@@ -535,7 +670,15 @@ export default function MembersPage() {
                 {orgMembers.map((member) => (
                   <TableRow key={member.id} className="border-border">
                     <TableCell className="font-medium text-foreground">
-                      {member.username}
+                      <div className="flex items-center gap-2">
+                        {member.username}
+                        {membersWithoutAccess.has(member.id) ? (
+                          <Badge variant="warning">
+                            <Lock className="size-3" />
+                            No project access yet
+                          </Badge>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -606,6 +749,7 @@ export default function MembersPage() {
                     Target
                   </TableHead>
                   <TableHead className="text-muted-foreground">Role</TableHead>
+                  <TableHead className="w-[160px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -623,6 +767,38 @@ export default function MembersPage() {
                     <TableCell>
                       <Badge variant="muted">{grant.role}</Badge>
                     </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const member = orgMembers.find(
+                              (candidate) => candidate.user === grant.user,
+                            );
+                            if (!member) return;
+                            openGrantDialog(member, {
+                              level:
+                                grant.level === 'Project'
+                                  ? 'project'
+                                  : 'environment',
+                              targetId: grant.targetId,
+                              role: grant.role,
+                            });
+                          }}
+                        >
+                          Change role
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleRevoke(grant)}
+                        >
+                          Revoke
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -635,11 +811,14 @@ export default function MembersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Grant a role to {activeMember?.username ?? 'this member'}
+              {existingMembershipId ? 'Change role for ' : 'Grant a role to '}
+              {activeMember?.username ?? 'this member'}
             </DialogTitle>
             <DialogDescription>
-              This adds a role — it can never remove what a higher level already
-              grants. Preview the resolved capabilities before confirming.
+              {existingMembershipId
+                ? 'This changes the role already held at this level and target -- it does not create a second grant.'
+                : 'This adds a role — it can never remove what a higher level already grants.'}{' '}
+              Preview the resolved capabilities before confirming.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -780,7 +959,7 @@ export default function MembersPage() {
               }
             >
               {isSavingGrant ? <Spinner size="sm" className="mr-2" /> : null}
-              Confirm grant
+              {existingMembershipId ? 'Save role' : 'Confirm grant'}
             </Button>
           </DialogFooter>
         </DialogContent>

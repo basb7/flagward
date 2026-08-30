@@ -159,6 +159,18 @@ class ProjectMembershipSerializer(CapabilityScopedFKMixin, serializers.ModelSeri
         return attrs
 
 
+class ProjectMembershipUpdateSerializer(serializers.ModelSerializer):
+    """
+    Role-only update for an existing `ProjectMembership` -- `project` and
+    `user` stay read-only, same split as `OrganizationMembershipUpdateSerializer`:
+    changing who a grant applies to is a new grant, not an edit of this one.
+    """
+    class Meta:
+        model = ProjectMembership
+        fields = ['id', 'project', 'user', 'role', 'created_at']
+        read_only_fields = ['id', 'project', 'user', 'created_at']
+
+
 class EnvironmentMembershipSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
     """
     Grants an `EnvironmentMembership` role to a user
@@ -192,6 +204,18 @@ class EnvironmentMembershipSerializer(CapabilityScopedFKMixin, serializers.Model
                 "Target user has no organization membership in this organization."
             )
         return attrs
+
+
+class EnvironmentMembershipUpdateSerializer(serializers.ModelSerializer):
+    """
+    Role-only update for an existing `EnvironmentMembership` -- same split as
+    `ProjectMembershipUpdateSerializer`: `environment` and `user` stay
+    read-only.
+    """
+    class Meta:
+        model = EnvironmentMembership
+        fields = ['id', 'environment', 'user', 'role', 'created_at']
+        read_only_fields = ['id', 'environment', 'user', 'created_at']
 
 
 class EffectiveCapabilitiesPreviewSerializer(CapabilityScopedFKMixin, serializers.Serializer):

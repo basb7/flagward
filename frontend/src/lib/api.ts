@@ -177,9 +177,18 @@ export const authApi = {
     }),
 
   me: () =>
-    request<{ id: number; username: string; email: string }>(
-      '/api/v1/auth/me/',
-    ),
+    request<{
+      id: number;
+      username: string;
+      email: string;
+      /**
+       * The caller's resolved capabilities, per organization it belongs to
+       * (answered through the same `resolve_capabilities` function
+       * enforcement uses -- see `authentication/views.py`). An organization
+       * absent from this list is one the caller holds no membership in.
+       */
+      organizations: { id: string; capabilities: string[] }[];
+    }>('/api/v1/auth/me/'),
 
   refresh: () =>
     request<{ message: string }>('/api/v1/auth/refresh/', {
@@ -695,6 +704,17 @@ export const projectMembershipsApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  updateRole: (membershipId: string, role: ProjectRole) =>
+    request<ProjectMembership>(
+      `/api/v1/tenancy/project-memberships/${membershipId}/`,
+      { method: 'PATCH', body: JSON.stringify({ role }) },
+    ),
+
+  remove: (membershipId: string) =>
+    request<void>(`/api/v1/tenancy/project-memberships/${membershipId}/`, {
+      method: 'DELETE',
+    }),
 };
 
 export interface EnvironmentMembership {
@@ -722,6 +742,17 @@ export const environmentMembershipsApi = {
     request<EnvironmentMembership>('/api/v1/tenancy/environment-memberships/', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  updateRole: (membershipId: string, role: EnvironmentRole) =>
+    request<EnvironmentMembership>(
+      `/api/v1/tenancy/environment-memberships/${membershipId}/`,
+      { method: 'PATCH', body: JSON.stringify({ role }) },
+    ),
+
+  remove: (membershipId: string) =>
+    request<void>(`/api/v1/tenancy/environment-memberships/${membershipId}/`, {
+      method: 'DELETE',
     }),
 };
 
