@@ -1,6 +1,13 @@
 'use client';
 
-import { Info, Lock, Plus, ShieldAlert, UserPlus } from 'lucide-react';
+import {
+  Info,
+  Lock,
+  Plus,
+  ShieldAlert,
+  UserMinus,
+  UserPlus,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -123,6 +130,10 @@ export default function MembersPage() {
     password: '',
     role: 'USER' as OrganizationRole,
   });
+
+  const [memberToRemove, setMemberToRemove] =
+    useState<OrganizationMembership | null>(null);
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
 
   const [activeMember, setActiveMember] = useState<ActiveMember | null>(null);
   const [isGrantDialogOpen, setIsGrantDialogOpen] = useState(false);
@@ -255,6 +266,18 @@ export default function MembersPage() {
     loadOrgWideGrants();
   }, [loadOrgWideGrants]);
 
+  /**
+   * "Has access" means "resolves to a non-empty capability set", not "holds
+   * a grant row" -- the same distinction `resolve_capabilities`
+   * (tenancy/capabilities.py) draws between rows and resolved capabilities.
+   * An organization ADMIN's org-level role alone resolves to
+   * `ALL_CAPABILITIES` (`_ORG_ADMIN_CAPS`): that is the entire org-level
+   * catalogue, fixed at exactly two roles, so replicating it here is not a
+   * second approximate resolution, it is the one place capability
+   * membership could ever go besides the constant itself. An org ADMIN must
+   * therefore never be badged, regardless of whether they hold any project
+   * or environment grant row.
+   */
   const membersWithoutAccess = useMemo(() => {
     const withAccess = new Set([
       ...orgProjectGrants.map((grant) => grant.user),
@@ -262,10 +285,21 @@ export default function MembersPage() {
     ]);
     return new Set(
       orgMembers
-        .filter((member) => !withAccess.has(member.user))
+        .filter(
+          (member) => member.role !== 'ADMIN' && !withAccess.has(member.user),
+        )
         .map((member) => member.id),
     );
   }, [orgMembers, orgProjectGrants, orgEnvGrants]);
+
+  // The backend refuses to remove (or demote) the last ADMIN of an
+  // organization (`last_admin_cannot_be_removed`). Offering the action
+  // anyway would just teach people it fails, so it is never presented for
+  // whichever ADMIN row is currently the only one left.
+  const orgAdminCount = useMemo(
+    () => orgMembers.filter((member) => member.role === 'ADMIN').length,
+    [orgMembers],
+  );
 
   const grantRows = useMemo(() => {
     const fromProjects = projectGrants.map((grant) => ({
@@ -481,6 +515,28 @@ export default function MembersPage() {
     }
   };
 
+  const handleRemoveMember = async () => {
+    if (!memberToRemove) return;
+    setIsRemovingMember(true);
+    try {
+      await organizationMembershipsApi.remove(memberToRemove.id);
+      success(`Removed ${memberToRemove.username} from the organization`);
+      setMemberToRemove(null);
+      // Removal cascades (#23): every project and environment grant this
+      // person held in this organization is revoked with them, so the grants
+      // table needs a refresh alongside the members list.
+      loadOrgMembers();
+      loadProjectGrants();
+      loadOrgWideGrants();
+    } catch (err) {
+      // Relay the server's message verbatim -- e.g. `last_admin_cannot_be_removed`
+      // if this member became the last ADMIN in a race with another remover.
+      showError(err instanceof Error ? err.message : 'Failed to remove member');
+    } finally {
+      setIsRemovingMember(false);
+    }
+  };
+
   if (isTenantLoading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -663,7 +719,7 @@ export default function MembersPage() {
                   <TableHead className="text-muted-foreground">
                     Organization role
                   </TableHead>
-                  <TableHead className="w-[140px]" />
+                  <TableHead className="w-[260px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -691,15 +747,29 @@ export default function MembersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!currentProject}
-                        onClick={() => openGrantDialog(member)}
-                      >
-                        <Plus className="mr-1 h-3.5 w-3.5" />
-                        Grant role
-                      </Button>
+                      <div className="flex justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!currentProject}
+                          onClick={() => openGrantDialog(member)}
+                        >
+                          <Plus className="mr-1 h-3.5 w-3.5" />
+                          Grant role
+                        </Button>
+                        {member.role === 'ADMIN' &&
+                        orgAdminCount <= 1 ? null : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setMemberToRemove(member)}
+                          >
+                            <UserMinus className="mr-1 h-3.5 w-3.5" />
+                            Remove
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -960,6 +1030,41 @@ export default function MembersPage() {
             >
               {isSavingGrant ? <Spinner size="sm" className="mr-2" /> : null}
               {existingMembershipId ? 'Save role' : 'Confirm grant'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={memberToRemove !== null}
+        onOpenChange={(open) => {
+          if (!open) setMemberToRemove(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove {memberToRemove?.username}?</DialogTitle>
+            <DialogDescription>
+              This revokes their membership in {currentOrganization.name}. Every
+              project and environment grant they hold in this organization is
+              revoked with them -- this cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMemberToRemove(null)}
+              disabled={isRemovingMember}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRemoveMember}
+              disabled={isRemovingMember}
+            >
+              {isRemovingMember ? <Spinner size="sm" className="mr-2" /> : null}
+              Remove member
             </Button>
           </DialogFooter>
         </DialogContent>

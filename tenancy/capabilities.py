@@ -67,6 +67,13 @@ EMPTY: frozenset[str] = frozenset()
 # administration role — it holds ORG_DELETE, and the hierarchy cascades. This
 # matches Flagsmith, whose organisation administrator likewise "has full
 # access to everything", and it is why the members UI must warn on assignment.
+# The members screen mirrors this: it never badges an organization ADMIN as
+# lacking access, because an ADMIN needs no grant rows to hold everything.
+# That is a policy duplicated in TypeScript, so if this line ever stops
+# meaning "an ADMIN holds the whole catalogue", update
+# frontend/src/app/dashboard/members/page.tsx with it. The matrix test in
+# tests/unit/test_capabilities.py fails loudly on the change; this note is
+# what tells you the other place to look.
 _ORG_ADMIN_CAPS: frozenset[str] = ALL_CAPABILITIES
 
 ORG_ROLE_CAPS: dict[str, frozenset[str]] = {
