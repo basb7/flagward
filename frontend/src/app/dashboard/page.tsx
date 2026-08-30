@@ -5,6 +5,7 @@ import {
   Building2,
   Flag,
   Layers,
+  Lock,
   Plus,
   ShieldAlert,
   Zap,
@@ -35,6 +36,7 @@ import {
   environmentsApi,
   type TopFlag,
 } from '@/lib/api';
+import { hasOrgCapability, useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 
@@ -50,6 +52,7 @@ function formatRate(rate: number | null) {
 
 export default function DashboardPage() {
   const { error: showError } = useToast();
+  const { user } = useAuth();
   const {
     organizations,
     projects,
@@ -150,26 +153,45 @@ export default function DashboardPage() {
   }
 
   if (currentOrganization && projects.length === 0) {
+    // Zero projects reads two different ways depending on what the caller
+    // can do: nothing to see yet (offer to create one), or something exists
+    // that this account has never been granted access to (a "Create" button
+    // here would only 400 -- `project.create` is an organization-role grant,
+    // never something a project- or environment-level role confers, so this
+    // is the complete answer, not a guess).
+    const canCreateProject = hasOrgCapability(
+      user,
+      currentOrganization.id,
+      'project.create',
+    );
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <EmptyState
-          icon={Layers}
-          title="Create your first project"
-          description="Environments, flags and API keys all live inside a project."
-          action={
-            <CreateProjectDialog
-              organizationId={currentOrganization.id}
-              triggerButton={<Button />}
-              triggerContent={
-                <>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create project
-                </>
-              }
-              onCreated={() => refresh()}
-            />
-          }
-        />
+        {canCreateProject ? (
+          <EmptyState
+            icon={Layers}
+            title="Create your first project"
+            description="Environments, flags and API keys all live inside a project."
+            action={
+              <CreateProjectDialog
+                organizationId={currentOrganization.id}
+                triggerButton={<Button />}
+                triggerContent={
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create project
+                  </>
+                }
+                onCreated={() => refresh()}
+              />
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Lock}
+            title="No project access yet"
+            description={`You have not been given access to any project in ${currentOrganization.name}. Ask an admin of this organization to grant you one.`}
+          />
+        )}
       </div>
     );
   }

@@ -43,11 +43,13 @@ from tenancy.scoping import environments_with, orgs_with, projects_with
 from .serializers import (
     EffectiveCapabilitiesPreviewSerializer,
     EnvironmentMembershipSerializer,
+    EnvironmentMembershipUpdateSerializer,
     OrganizationMemberCreateSerializer,
     OrganizationMembershipSerializer,
     OrganizationMembershipUpdateSerializer,
     OrganizationSerializer,
     ProjectMembershipSerializer,
+    ProjectMembershipUpdateSerializer,
     ProjectSerializer,
 )
 
@@ -217,21 +219,38 @@ class ProjectViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
 
 
 class ProjectMembershipViewSet(
-    mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
 ):
     """
-    Lists and grants `ProjectMembership` roles (spec/organization-management:
-    Per-Project and Per-Environment Role Grants, tasks 6.6/6.7, 8.2/8.3).
+    Lists, grants, changes, and revokes `ProjectMembership` roles
+    (spec/organization-management: Per-Project and Per-Environment Role
+    Grants, tasks 6.6/6.7, 8.2/8.3).
 
     Creation is authorized entirely by `ProjectMembershipSerializer`'s
     `CapabilityScopedFKMixin`-narrowed `project` field (design D5, Layer 2) --
     DRF has no object on a create, so there is nothing for `HasCapability` to
     check here. Listing is scoped by `PROJECT_VIEW` (task 8.2/8.3) -- ordinary
     visibility, not the `PROJECT_MANAGE_MEMBERS` capability creation requires.
+
+    Update and destroy follow `OrganizationMembershipViewSet`'s split: a
+    scoped `get_queryset` (Layer 1 -- a project the requester cannot even see
+    is a 404) plus an explicit `_require_manage_permission` check inside the
+    mutation (Layer 3 -- visible-but-unprivileged is a 403). Unlike the
+    organization case, there is no "never zero admins" invariant to enforce
+    at this level, so no row lock is needed here.
     """
 
     queryset = ProjectMembership.objects.select_related("project__organization", "user")
     serializer_class = ProjectMembershipSerializer
+
+    def get_serializer_class(self):
+        if self.action in ("update", "partial_update"):
+            return ProjectMembershipUpdateSerializer
+        return super().get_serializer_class()
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -239,15 +258,37 @@ class ProjectMembershipViewSet(
             project__in=projects_with(self.request.user, Capability.PROJECT_VIEW)
         )
 
+    def _require_manage_permission(self, membership):
+        if not projects_with(self.request.user, Capability.PROJECT_MANAGE_MEMBERS).filter(
+            pk=membership.project_id
+        ).exists():
+            raise PermissionDenied()
+
+    def perform_update(self, serializer):
+        self._require_manage_permission(serializer.instance)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_manage_permission(instance)
+        instance.delete()
+
 
 class EnvironmentMembershipViewSet(
-    mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
 ):
     """
-    Lists and grants `EnvironmentMembership` roles (see
+    Lists, grants, changes, and revokes `EnvironmentMembership` roles (see
     `ProjectMembershipViewSet`). Listing is scoped by `ENVIRONMENT_VIEW`
     (task 8.2/8.3) -- ordinary visibility, not the `PROJECT_MANAGE_MEMBERS`
     capability creation requires on the environment's parent project.
+
+    Update and destroy are gated by `PROJECT_MANAGE_MEMBERS` on the
+    environment's parent project -- there is no separate environment-level
+    "manage members" capability, per `EnvironmentMembershipSerializer`.
     """
 
     queryset = EnvironmentMembership.objects.select_related(
@@ -255,11 +296,30 @@ class EnvironmentMembershipViewSet(
     )
     serializer_class = EnvironmentMembershipSerializer
 
+    def get_serializer_class(self):
+        if self.action in ("update", "partial_update"):
+            return EnvironmentMembershipUpdateSerializer
+        return super().get_serializer_class()
+
     def get_queryset(self):
         queryset = super().get_queryset()
         return queryset.filter(
             environment__in=environments_with(self.request.user, Capability.ENVIRONMENT_VIEW)
         )
+
+    def _require_manage_permission(self, membership):
+        if not projects_with(self.request.user, Capability.PROJECT_MANAGE_MEMBERS).filter(
+            pk=membership.environment.project_id
+        ).exists():
+            raise PermissionDenied()
+
+    def perform_update(self, serializer):
+        self._require_manage_permission(serializer.instance)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_manage_permission(instance)
+        instance.delete()
 
 
 class EffectiveCapabilitiesPreviewView(APIView):

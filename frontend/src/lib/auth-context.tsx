@@ -13,6 +13,27 @@ interface User {
   id: number;
   username: string;
   email: string;
+  /** The caller's resolved capabilities, per organization it belongs to. */
+  organizations: { id: string; capabilities: string[] }[];
+}
+
+/**
+ * Whether `user` holds `capability` in the organization `organizationId`.
+ * Reads only what `/auth/me/` already answered through `resolve_capabilities`
+ * -- never re-derived here, so the dashboard cannot drift from what the
+ * backend actually enforces.
+ */
+export function hasOrgCapability(
+  user: User | null,
+  organizationId: string | null | undefined,
+  capability: string,
+): boolean {
+  if (!user || !organizationId) return false;
+  return (
+    user.organizations
+      .find((organization) => organization.id === organizationId)
+      ?.capabilities.includes(capability) ?? false
+  );
 }
 
 interface AuthContextType {
@@ -49,8 +70,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => onSessionExpired(() => setUser(null)), []);
 
   const login = async (username: string, password: string) => {
-    const response = await authApi.login(username, password);
-    setUser(response.user);
+    await authApi.login(username, password);
+    // The login response only carries id/username/email. Capabilities come
+    // from `/auth/me/`, and the provider stays mounted across this
+    // navigation (no fresh `checkAuth()` on the dashboard route), so without
+    // this fetch the dashboard would render its first frame believing the
+    // user belongs to no organization at all.
+    const profile = await authApi.me();
+    setUser(profile);
   };
 
   const logout = async () => {

@@ -12,6 +12,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from tenancy.capabilities import resolve_capabilities
+from tenancy.models import OrganizationMembership
 from tenancy.permissions import IsDashboardUser
 
 
@@ -199,14 +201,33 @@ def logout(request):
 @permission_classes([IsDashboardUser])
 def me(request):
     """
-    Get current user info.
+    Get current user info, plus the caller's resolved capabilities per
+    organization it belongs to.
+
+    Capabilities are answered through `resolve_capabilities` -- the same pure
+    function `tenancy.scoping.capabilities_for` calls for real enforcement --
+    so this can never drift into a second source of truth. Granularity is
+    per-organization: no project or environment role is folded in, because
+    the only capability the dashboard needs at this level (`project.create`)
+    is exclusively an organization-role grant (see `tenancy/capabilities.py`).
     """
     user = request.user
+    memberships = OrganizationMembership.objects.filter(user=user).values(
+        "organization_id", "role"
+    )
+    organizations = [
+        {
+            "id": str(membership["organization_id"]),
+            "capabilities": sorted(resolve_capabilities(membership["role"], None, None)),
+        }
+        for membership in memberships
+    ]
     return Response(
         {
             "id": user.id,
             "username": user.username,
             "email": user.email,
+            "organizations": organizations,
         },
         status=status.HTTP_200_OK,
     )
