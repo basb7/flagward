@@ -71,7 +71,10 @@ class TestOrganizationMembershipListing:
 class TestProjectMembershipListing:
     """task 8.2/8.3: GET /api/v1/tenancy/project-memberships/."""
 
-    def test_lists_own_project_members_only(self, api_client, user, grant, project, make_project):
+    def test_lists_own_project_members_only(
+        self, api_client, user, grant, organization, project, make_project
+    ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         membership = grant(user, project=project, role=ProjectRole.VIEWER)
         foreign_project = make_project(name="Foreign", key="foreign")
         foreign_user = type(user).objects.create_user(username="foreign-editor", password="!")
@@ -100,8 +103,9 @@ class TestEnvironmentMembershipListing:
     """task 8.2/8.3: GET /api/v1/tenancy/environment-memberships/."""
 
     def test_lists_own_environment_members_only(
-        self, api_client, user, grant, environment, make_project, make_environment
+        self, api_client, user, grant, organization, environment, make_project, make_environment
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         membership = grant(user, environment=environment, role=EnvironmentRole.VIEWER)
         foreign_project = make_project(name="Foreign", key="foreign")
         foreign_environment = make_environment(project=foreign_project, key="stage", name="Staging")

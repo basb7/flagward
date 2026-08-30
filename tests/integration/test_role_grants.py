@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 
 from tenancy.models import (
     EnvironmentMembership,
+    OrganizationMembership,
     OrganizationRole,
     ProjectMembership,
     ProjectRole,
@@ -22,6 +23,7 @@ class TestRoleGrants:
 
     def test_grant_project_role(self, api_client, user, grant, organization, project):
         """A project admin grants an EDITOR role on a project to a fellow org member."""
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         target = User.objects.create_user(username="target", password="secret")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -40,6 +42,7 @@ class TestRoleGrants:
 
     def test_grant_environment_role(self, api_client, user, grant, organization, project, environment):
         """A project admin grants an OPERATOR role on an environment to a fellow org member."""
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         target = User.objects.create_user(username="target", password="secret")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -63,6 +66,9 @@ class TestRoleGrants:
         OrganizationMembership in the owning organization must be rejected.
         """
         grant_admin = User.objects.create_user(username="admin", password="secret")
+        OrganizationMembership.objects.create(
+            organization=project.organization, user=grant_admin, role=OrganizationRole.ADMIN
+        )
         ProjectMembership.objects.create(project=project, user=grant_admin, role=ProjectRole.ADMIN)
         stranger = User.objects.create_user(username="stranger", password="secret")
         client = api_client(grant_admin)
@@ -83,6 +89,7 @@ class TestRoleGrants:
         Layer 2), so the chosen project is an invalid choice, not a
         readable-but-forbidden one.
         """
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
         target = User.objects.create_user(username="target", password="secret")
         grant(target, org=organization, role=OrganizationRole.USER)

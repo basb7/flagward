@@ -34,6 +34,7 @@ class TestProjectMembershipUpdate:
     """PATCH /api/v1/tenancy/project-memberships/{id}/."""
 
     def test_project_admin_changes_a_role(self, api_client, user, grant, organization, project):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -58,6 +59,7 @@ class TestProjectMembershipUpdate:
         an existing (project, user) pair must still fail -- the fix is a PATCH
         endpoint, not a change in create's behaviour.
         """
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -76,6 +78,7 @@ class TestProjectMembershipUpdate:
     def test_update_rejected_without_manage_members_capability(
         self, api_client, user, grant, organization, project
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -114,6 +117,7 @@ class TestProjectMembershipUpdate:
         assert membership.role == ProjectRole.VIEWER
 
     def test_project_admin_revokes_a_grant(self, api_client, user, grant, organization, project):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -128,6 +132,7 @@ class TestProjectMembershipUpdate:
     def test_destroy_rejected_without_manage_members_capability(
         self, api_client, user, grant, organization, project
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -162,6 +167,7 @@ class TestEnvironmentMembershipUpdate:
     def test_project_admin_changes_a_role(
         self, api_client, user, grant, organization, project, environment
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -181,6 +187,7 @@ class TestEnvironmentMembershipUpdate:
     def test_update_rejected_without_manage_members_capability(
         self, api_client, user, grant, organization, project, environment
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -223,6 +230,7 @@ class TestEnvironmentMembershipUpdate:
     def test_project_admin_revokes_a_grant(
         self, api_client, user, grant, organization, project, environment
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
@@ -237,6 +245,7 @@ class TestEnvironmentMembershipUpdate:
     def test_destroy_rejected_without_manage_members_capability(
         self, api_client, user, grant, organization, project, environment
     ):
+        grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
         target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
