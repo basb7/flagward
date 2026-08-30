@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -14,15 +14,30 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/lib/auth-context';
+import { safeNextPath } from '@/lib/utils';
 
-export default function LoginPage() {
+// Next.js 16 requires a `<Suspense>` boundary around any Client Component
+// that calls `useSearchParams`, or the production build fails (see
+// node_modules/next/dist/docs/.../use-search-params.md). The form is split
+// out so the Suspense boundary wraps only the part that needs it.
+function LoginForm() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Only a same-origin, path-rooted `next` is ever honoured -- see
+  // `safeNextPath` for what's rejected and why (open-redirect prevention).
+  const rawNext = searchParams.get('next');
+  const next = safeNextPath(rawNext);
+  const registerHref = rawNext
+    ? `/register?next=${encodeURIComponent(next)}`
+    : '/register';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +46,7 @@ export default function LoginPage() {
 
     try {
       await login(username, password);
-      router.push('/dashboard');
+      router.push(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -91,7 +106,7 @@ export default function LoginPage() {
             <p className="text-center text-sm text-muted-foreground">
               Don&apos;t have an account?{' '}
               <Link
-                href="/register"
+                href={registerHref}
                 className="text-foreground underline-offset-4 hover:underline"
               >
                 Create one
@@ -101,5 +116,21 @@ export default function LoginPage() {
         </form>
       </Card>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <Spinner size="lg" />
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }
