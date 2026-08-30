@@ -2,12 +2,18 @@
 Tenancy models: the Organization/Project/Environment hierarchy and the three
 role-based membership tables that grant access at each level.
 """
+import hashlib
+import secrets
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models, transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from django.utils import timezone
+
+INVITATION_DEFAULT_TTL = timedelta(days=7)
 
 
 class Plan(models.TextChoices):
@@ -111,6 +117,112 @@ class OrganizationMembership(models.Model):
 
     def __str__(self):
         return f"{self.user} @ {self.organization} ({self.role})"
+
+
+def _hash_invitation_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+class Invitation(models.Model):
+    """
+    A single-use invitation link that brings a person into an organization
+    with a fixed role, without an admin ever setting that person's password
+    (spec: single-use invitation links).
+
+    The token is a bearer credential: whoever holds the link joins with the
+    role baked into it, no password check involved. `token_hash` stores only
+    a SHA-256 digest of it, never the raw value -- a database dump must not
+    yield a working link, the same reasoning that keeps user passwords out
+    of plaintext. Unlike a password hasher this is deliberately a fast hash:
+    the raw token is 256 bits of `secrets` randomness, already far beyond
+    brute-force reach, so a slow hash would only cost every legitimate
+    lookup (`token_hash` is looked up by unique index, not compared row by
+    row) without adding real protection.
+
+    Single-use accounting lives on this row rather than a separate table:
+    `accepted_by`/`accepted_at` record who consumed it and when, so
+    "already accepted" is a property of the invitation, not something
+    inferred from an OrganizationMembership that may since have been
+    revoked. `revoked_at` is a separate, mutually exclusive state -- an
+    admin can revoke a link nobody has used yet, but never un-use one.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="invitations")
+    role = models.CharField(max_length=20, choices=OrganizationRole.choices)
+    token_hash = models.CharField(max_length=64, unique=True, editable=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_invitations",
+    )
+    expires_at = models.DateTimeField()
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accepted_invitations",
+    )
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(role__in=OrganizationRole.values),
+                name="invitation_role_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["organization"], name="invitation_organization_idx"),
+        ]
+
+    def __str__(self):
+        return f"Invitation to {self.organization} as {self.role}"
+
+    @classmethod
+    def issue(cls, *, organization, role, created_by, ttl=INVITATION_DEFAULT_TTL):
+        """Create a new invitation and return `(invitation, raw_token)`.
+
+        The raw token is returned only here, once, at creation -- callers
+        must hand it to the admin immediately and never persist it
+        themselves; only `token_hash` is ever stored.
+        """
+        raw_token = secrets.token_urlsafe(32)
+        invitation = cls.objects.create(
+            organization=organization,
+            role=role,
+            token_hash=_hash_invitation_token(raw_token),
+            created_by=created_by,
+            expires_at=timezone.now() + ttl,
+        )
+        return invitation, raw_token
+
+    @classmethod
+    def for_token(cls, raw_token: str):
+        """Resolve a raw token to its Invitation, or None if unknown."""
+        try:
+            return cls.objects.select_related("organization").get(
+                token_hash=_hash_invitation_token(raw_token)
+            )
+        except cls.DoesNotExist:
+            return None
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_revoked(self) -> bool:
+        return self.revoked_at is not None
+
+    @property
+    def is_accepted(self) -> bool:
+        return self.accepted_at is not None
 
 
 class ProjectMembership(models.Model):

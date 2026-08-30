@@ -10,6 +10,7 @@ from tenancy.capabilities import Capability
 from tenancy.models import (
     EnvironmentMembership,
     EnvironmentRole,
+    Invitation,
     Organization,
     OrganizationMembership,
     OrganizationRole,
@@ -243,3 +244,54 @@ class EffectiveCapabilitiesPreviewSerializer(CapabilityScopedFKMixin, serializer
     environment_roles = serializers.DictField(
         child=serializers.ChoiceField(choices=EnvironmentRole.choices), required=False, default=dict
     )
+
+
+class InvitationSerializer(serializers.ModelSerializer):
+    """
+    Read-only representation of an invitation row (list/create/revoke
+    responses). The raw token is never one of these fields -- it is handed
+    back exactly once, by the create view, alongside this same shape.
+    """
+    created_by_username = serializers.SerializerMethodField()
+    accepted_by_username = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invitation
+        fields = [
+            'id', 'organization', 'role', 'created_by', 'created_by_username',
+            'expires_at', 'accepted_by', 'accepted_by_username', 'accepted_at',
+            'revoked_at', 'created_at', 'status',
+        ]
+        read_only_fields = fields
+
+    def get_created_by_username(self, obj):
+        return obj.created_by.username if obj.created_by_id else None
+
+    def get_accepted_by_username(self, obj):
+        return obj.accepted_by.username if obj.accepted_by_id else None
+
+    def get_status(self, obj):
+        if obj.is_accepted:
+            return "accepted"
+        if obj.is_revoked:
+            return "revoked"
+        if obj.is_expired:
+            return "expired"
+        return "pending"
+
+
+class InvitationCreateSerializer(CapabilityScopedFKMixin, serializers.Serializer):
+    """
+    Input for `POST /invitations/` (an admin creates a single-use invitation
+    link). `organization` is narrowed (design D5, Layer 2 -- the only
+    create-time gate) to organizations the requester holds
+    `org.manage_members` on, same narrowing pattern as every other writable
+    FK in this app.
+    """
+    capability_scoped_fields = {
+        "organization": (Capability.ORG_MANAGE_MEMBERS, orgs_with),
+    }
+
+    organization = serializers.PrimaryKeyRelatedField(queryset=Organization.objects.all())
+    role = serializers.ChoiceField(choices=OrganizationRole.choices)
