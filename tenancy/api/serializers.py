@@ -46,6 +46,16 @@ class ProjectSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
         fields = ['id', 'organization', 'name', 'key', 'created_at']
         read_only_fields = ['id', 'created_at']
 
+    def validate(self, attrs):
+        # A rename must never double as a move-between-orgs primitive: moving
+        # a project changes whose capabilities govern its whole subtree, a
+        # different and far riskier operation than renaming it.
+        if self.instance is not None and "organization" in self.initial_data:
+            raise serializers.ValidationError(
+                {"organization": "organization is immutable; create a new project instead of moving this one."}
+            )
+        return attrs
+
 
 class OrganizationMembershipSerializer(serializers.ModelSerializer):
     """

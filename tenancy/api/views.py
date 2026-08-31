@@ -27,7 +27,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core_flags.models import Environment
+from core_flags.models import Condition, Environment, FeatureFlag, FlagOverride, StrategyRule
+from sdk_api.models import EvaluationLog, SDKRegistration
 from tenancy.capabilities import Capability, max_seats, resolve_capabilities
 from tenancy.models import (
     EnvironmentMembership,
@@ -55,8 +56,79 @@ from .serializers import (
 )
 
 
-class OrganizationViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
-    """List, retrieve, and create organizations the user can view."""
+def _require_confirm_name(request, instance):
+    """
+    Delete is the most destructive operation this product has, so a boolean
+    flag is not enough -- it is something a client sets once and forgets,
+    protecting nobody. The caller must instead supply the object's exact
+    current `name` back (GitHub's "type the repository name" pattern), which
+    cannot be satisfied by accident.
+    """
+    confirm_name = request.data.get("confirm_name")
+    if confirm_name != instance.name:
+        raise ValidationError(
+            {"confirm_name": "confirm_name does not match the current name; nothing was deleted."}
+        )
+
+
+def _organization_deletion_impact(organization, requesting_user):
+    """Per-subtree counts below `organization`, for a pre-delete impact preview."""
+    organization_memberships = OrganizationMembership.objects.filter(organization=organization)
+    return {
+        "projects": Project.objects.filter(organization=organization).count(),
+        "environments": Environment.objects.filter(project__organization=organization).count(),
+        "flags": FeatureFlag.objects.filter(environment__project__organization=organization).count(),
+        "strategy_rules": StrategyRule.objects.filter(
+            flag__environment__project__organization=organization
+        ).count(),
+        "conditions": Condition.objects.filter(
+            rule__flag__environment__project__organization=organization
+        ).count(),
+        "overrides": FlagOverride.objects.filter(
+            flag__environment__project__organization=organization
+        ).count(),
+        "evaluation_logs": EvaluationLog.objects.filter(
+            flag__environment__project__organization=organization
+        ).count(),
+        "sdk_registrations": SDKRegistration.objects.filter(
+            environment__project__organization=organization
+        ).count(),
+        "organization_memberships": organization_memberships.count(),
+        "project_memberships": ProjectMembership.objects.filter(
+            project__organization=organization
+        ).count(),
+        "environment_memberships": EnvironmentMembership.objects.filter(
+            environment__project__organization=organization
+        ).count(),
+        "invitations": Invitation.objects.filter(organization=organization).count(),
+        "other_members": organization_memberships.exclude(user=requesting_user).count(),
+    }
+
+
+def _project_deletion_impact(project):
+    """Per-subtree counts below `project`, for a pre-delete impact preview."""
+    return {
+        "environments": Environment.objects.filter(project=project).count(),
+        "flags": FeatureFlag.objects.filter(environment__project=project).count(),
+        "strategy_rules": StrategyRule.objects.filter(flag__environment__project=project).count(),
+        "conditions": Condition.objects.filter(rule__flag__environment__project=project).count(),
+        "overrides": FlagOverride.objects.filter(flag__environment__project=project).count(),
+        "evaluation_logs": EvaluationLog.objects.filter(flag__environment__project=project).count(),
+        "sdk_registrations": SDKRegistration.objects.filter(environment__project=project).count(),
+        "project_memberships": ProjectMembership.objects.filter(project=project).count(),
+        "environment_memberships": EnvironmentMembership.objects.filter(
+            environment__project=project
+        ).count(),
+    }
+
+
+class OrganizationViewSet(
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.ReadOnlyModelViewSet,
+):
+    """List, retrieve, create, rename, and delete organizations the user can view."""
 
     queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
@@ -73,6 +145,61 @@ class OrganizationViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet
             OrganizationMembership.objects.create(
                 organization=organization, user=self.request.user, role=OrganizationRole.ADMIN
             )
+
+    def _require_manage_permission(self, organization):
+        # Layer 3: visible-but-unprivileged is a 403, same split as
+        # `OrganizationMembershipViewSet`.
+        if not orgs_with(self.request.user, Capability.ORG_MANAGE).filter(pk=organization.pk).exists():
+            raise PermissionDenied()
+
+    def _require_delete_permission(self, organization):
+        if not orgs_with(self.request.user, Capability.ORG_DELETE).filter(pk=organization.pk).exists():
+            raise PermissionDenied()
+
+    def perform_update(self, serializer):
+        self._require_manage_permission(serializer.instance)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_delete_permission(instance)
+        _require_confirm_name(self.request, instance)
+        # An organization with other members takes their access and their
+        # data with it, with no consent from them -- blocked rather than
+        # merely reported, since this app has no other way to hand off or
+        # preserve their access first. Remove the other members through
+        # OrganizationMembershipViewSet before deleting, a deliberate speed
+        # bump on the single most destructive operation this product has.
+        # Deleting the caller's own only organization is deliberately left
+        # unguarded here: it is not destructive to anyone but the caller, who
+        # lands back on the empty state offering to create one.
+        other_members = (
+            OrganizationMembership.objects.filter(organization=instance)
+            .exclude(user=self.request.user)
+            .count()
+        )
+        if other_members > 0:
+            raise ValidationError(
+                {
+                    "error": "organization_has_other_members",
+                    "other_members": other_members,
+                    "detail": (
+                        f"This organization has {other_members} other member(s); "
+                        "remove them first before deleting it."
+                    ),
+                }
+            )
+        instance.delete()
+
+    @action(detail=True, methods=["get"])
+    def deletion_impact(self, request, pk=None):
+        """
+        Counts of everything a delete would remove, so a caller can decide
+        before it happens instead of after. Gated by the same capability as
+        delete itself -- its only purpose is informing that decision.
+        """
+        organization = self.get_object()
+        self._require_delete_permission(organization)
+        return Response(_organization_deletion_impact(organization, request.user))
 
 
 class OrganizationMembershipViewSet(
@@ -158,14 +285,48 @@ class OrganizationMembershipViewSet(
             instance.delete()
 
 
-class ProjectViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
-    """List, retrieve, and create projects the user can view."""
+class ProjectViewSet(
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.ReadOnlyModelViewSet,
+):
+    """List, retrieve, create, rename, and delete projects the user can view."""
 
     queryset = Project.objects.select_related("organization")
     serializer_class = ProjectSerializer
 
     def get_queryset(self):
         return projects_with(self.request.user, Capability.PROJECT_VIEW)
+
+    def _require_manage_permission(self, project):
+        # Layer 3: visible-but-unprivileged is a 403, same split as
+        # `OrganizationViewSet`/`ProjectMembershipViewSet`.
+        if not projects_with(self.request.user, Capability.PROJECT_MANAGE).filter(pk=project.pk).exists():
+            raise PermissionDenied()
+
+    def _require_delete_permission(self, project):
+        if not projects_with(self.request.user, Capability.PROJECT_DELETE).filter(pk=project.pk).exists():
+            raise PermissionDenied()
+
+    def perform_update(self, serializer):
+        self._require_manage_permission(serializer.instance)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_delete_permission(instance)
+        _require_confirm_name(self.request, instance)
+        # Unlike organization delete, there is no membership-blocking rule
+        # here: project members remain members of the organization and keep
+        # access to its other projects, a strictly smaller blast radius.
+        instance.delete()
+
+    @action(detail=True, methods=["get"])
+    def deletion_impact(self, request, pk=None):
+        """See `OrganizationViewSet.deletion_impact` -- same shape, one level down."""
+        project = self.get_object()
+        self._require_delete_permission(project)
+        return Response(_project_deletion_impact(project))
 
 
 class ProjectMembershipViewSet(
