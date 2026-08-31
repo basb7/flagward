@@ -458,7 +458,7 @@ export default function MembersPage() {
 
   const handleCopyInviteLink = async () => {
     if (!createdInvite) return;
-    const link = `${window.location.origin}/invite/${createdInvite.token}`;
+    const link = createdInvite.link;
     try {
       await navigator.clipboard.writeText(link);
       success('Invitation link copied');
@@ -675,7 +675,7 @@ export default function MembersPage() {
                       <Input
                         id="invite-link"
                         readOnly
-                        value={`${window.location.origin}/invite/${createdInvite.token}`}
+                        value={createdInvite.link}
                         onFocus={(e) => e.currentTarget.select()}
                       />
                       <Button
