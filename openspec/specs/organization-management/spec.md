@@ -23,6 +23,32 @@ themselves instead of inheriting a generated name.
 - AND no `Organization` is created
 - AND no `OrganizationMembership` is created
 
+### Requirement: Email Is a Required, Unique Identity
+
+Registration MUST reject a request with a missing or malformed email with a
+400 response. `auth.User.email` MUST be unique across all accounts, enforced
+at the database level (a unique index, since `auth.User` is not a model this
+project owns) so that no code path -- including one that bypasses the
+register view -- can create two accounts sharing an address. Email
+uniqueness MUST be case-insensitive: the local part and domain are both
+lowercased before comparison and storage, so `Brian@example.com` and
+`brian@example.com` are the same identity. This is the prerequisite for
+password reset: a reset proves control of a channel the account owns, which
+requires that channel to unambiguously identify exactly one account.
+
+#### Scenario: Registration without an email is rejected
+
+- WHEN a registration request omits the email or sends a malformed one
+- THEN the system returns 400
+- AND no `auth.User` is created
+
+#### Scenario: Registration with an already-registered email is rejected
+
+- GIVEN an account already exists for a given email
+- WHEN a new registration request supplies that same email, in any letter case
+- THEN the system returns 400
+- AND no `auth.User` is created
+
 ### Requirement: An Invitation Link Is the Only Way Into an Organization
 
 A member holding `org.manage_members` MUST be able to issue a single-use,

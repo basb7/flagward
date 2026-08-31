@@ -39,7 +39,9 @@ class TestAdministrationInvariant:
     def test_non_last_admin_can_be_removed(self, api_client, user, grant, organization):
         """Triangulation: the invariant only blocks the *last* admin."""
         membership = grant(user, org=organization, role=OrganizationRole.ADMIN)
-        second_admin = User.objects.create_user(username="second-admin", password="secret")
+        second_admin = User.objects.create_user(
+            username="second-admin", email="second-admin@example.com", password="secret"
+        )
         grant(second_admin, org=organization, role=OrganizationRole.ADMIN)
         client = api_client(user)
 
@@ -51,7 +53,7 @@ class TestAdministrationInvariant:
     def test_non_privileged_member_cannot_remove_a_membership(self, api_client, user, grant, organization):
         """A `USER`-role member has no `org.manage_members` capability -- 403."""
         membership = grant(user, org=organization, role=OrganizationRole.ADMIN)
-        member = User.objects.create_user(username="member", password="secret")
+        member = User.objects.create_user(username="member", email="member@example.com", password="secret")
         grant(member, org=organization, role=OrganizationRole.USER)
         client = api_client(member)
 
@@ -65,7 +67,7 @@ class TestAdministrationInvariant:
     ):
         """Triangulation: the invariant only blocks a demotion/removal, never a promotion."""
         grant(user, org=organization, role=OrganizationRole.ADMIN)
-        member = User.objects.create_user(username="member", password="secret")
+        member = User.objects.create_user(username="member", email="member@example.com", password="secret")
         member_membership = grant(member, org=organization, role=OrganizationRole.USER)
         client = api_client(user)
 

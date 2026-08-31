@@ -41,7 +41,7 @@ class TestRemovalRevokesGrantsEndToEnd:
     def test_removed_member_loses_all_access_and_write(
         self, api_client, user, grant, organization, project, environment, flag
     ):
-        admin = User.objects.create_user(username="admin", password="tram-quartz-19-belt")
+        admin = User.objects.create_user(username="admin", email="admin@example.com", password="tram-quartz-19-belt")
         grant(admin, org=organization, role=OrganizationRole.ADMIN)
         org_membership = grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.EDITOR)

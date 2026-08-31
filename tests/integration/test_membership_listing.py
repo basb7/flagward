@@ -42,7 +42,9 @@ class TestOrganizationMembershipListing:
     def test_lists_own_organization_members_only(self, api_client, user, grant, organization):
         grant(user, org=organization, role=OrganizationRole.ADMIN)
         foreign_org = Organization.objects.create(name="Foreign", plan="COMMUNITY")
-        foreign_user = type(user).objects.create_user(username="foreign-admin", password="!")
+        foreign_user = type(user).objects.create_user(
+            username="foreign-admin", email="foreign-admin@example.com", password="!"
+        )
         OrganizationMembership.objects.create(
             organization=foreign_org, user=foreign_user, role=OrganizationRole.ADMIN
         )
@@ -77,7 +79,9 @@ class TestProjectMembershipListing:
         grant(user, org=organization, role=OrganizationRole.USER)
         membership = grant(user, project=project, role=ProjectRole.VIEWER)
         foreign_project = make_project(name="Foreign", key="foreign")
-        foreign_user = type(user).objects.create_user(username="foreign-editor", password="!")
+        foreign_user = type(user).objects.create_user(
+            username="foreign-editor", email="foreign-editor@example.com", password="!"
+        )
         ProjectMembership.objects.create(
             project=foreign_project, user=foreign_user, role=ProjectRole.EDITOR
         )
@@ -109,7 +113,9 @@ class TestEnvironmentMembershipListing:
         membership = grant(user, environment=environment, role=EnvironmentRole.VIEWER)
         foreign_project = make_project(name="Foreign", key="foreign")
         foreign_environment = make_environment(project=foreign_project, key="stage", name="Staging")
-        foreign_user = type(user).objects.create_user(username="foreign-viewer", password="!")
+        foreign_user = type(user).objects.create_user(
+            username="foreign-viewer", email="foreign-viewer@example.com", password="!"
+        )
         EnvironmentMembership.objects.create(
             environment=foreign_environment, user=foreign_user, role=EnvironmentRole.VIEWER
         )
@@ -159,7 +165,7 @@ class TestMembershipListingNamesPeople:
         """
         grant(user, org=organization, role=OrganizationRole.ADMIN)
         others = User.objects.bulk_create(
-            User(username=f"member{i}", password="!") for i in range(10)
+            User(username=f"member{i}", email=f"member{i}@example.com", password="!") for i in range(10)
         )
         OrganizationMembership.objects.bulk_create(
             OrganizationMembership(

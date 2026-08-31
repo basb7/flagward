@@ -26,7 +26,8 @@ def _fill_seats(organization, count, start=0, role=OrganizationRole.USER):
     counts.
     """
     members = User.objects.bulk_create(
-        User(username=f"seat{i}", password="!") for i in range(start, start + count)
+        User(username=f"seat{i}", email=f"seat{i}@example.com", password="!")
+        for i in range(start, start + count)
     )
     OrganizationMembership.objects.bulk_create(
         OrganizationMembership(organization=organization, user=member, role=role)
@@ -225,7 +226,9 @@ class TestInvitationAccept:
         _, raw_token = issue_invitation(organization=organization)
         first_user = api_client(user)
         first_user.post(f"/api/v1/tenancy/invitations/{raw_token}/accept/")
-        second_user = User.objects.create_user(username="second", password="tram-quartz-19-belt")
+        second_user = User.objects.create_user(
+            username="second", email="second@example.com", password="tram-quartz-19-belt"
+        )
         client = api_client(second_user)
 
         response = client.post(f"/api/v1/tenancy/invitations/{raw_token}/accept/")
