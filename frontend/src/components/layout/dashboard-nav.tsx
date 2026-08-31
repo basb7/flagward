@@ -6,7 +6,9 @@ import {
   Layers,
   LayoutGrid,
   LogOut,
+  Pencil,
   Plus,
+  Trash2,
   User,
   Users,
 } from 'lucide-react';
@@ -14,6 +16,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CreateOrganizationDialog } from '@/components/dashboard/create-organization-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
+import {
+  DeleteResourceDialog,
+  type ImpactField,
+} from '@/components/dashboard/delete-resource-dialog';
+import { RenameResourceDialog } from '@/components/dashboard/rename-resource-dialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -21,9 +28,41 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useAuth } from '@/lib/auth-context';
+import {
+  type OrganizationDeletionImpact,
+  type ProjectDeletionImpact,
+  tenancyApi,
+} from '@/lib/api';
+import { hasOrgCapability, useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
 import { cn } from '@/lib/utils';
+
+const ORGANIZATION_IMPACT_FIELDS: ImpactField<OrganizationDeletionImpact>[] = [
+  { key: 'projects', singular: 'project' },
+  { key: 'environments', singular: 'environment' },
+  { key: 'flags', singular: 'flag' },
+  { key: 'strategy_rules', singular: 'strategy rule' },
+  { key: 'conditions', singular: 'condition' },
+  { key: 'overrides', singular: 'override' },
+  { key: 'evaluation_logs', singular: 'evaluation log' },
+  { key: 'sdk_registrations', singular: 'SDK registration' },
+  { key: 'organization_memberships', singular: 'organization membership' },
+  { key: 'project_memberships', singular: 'project membership' },
+  { key: 'environment_memberships', singular: 'environment membership' },
+  { key: 'invitations', singular: 'invitation' },
+];
+
+const PROJECT_IMPACT_FIELDS: ImpactField<ProjectDeletionImpact>[] = [
+  { key: 'environments', singular: 'environment' },
+  { key: 'flags', singular: 'flag' },
+  { key: 'strategy_rules', singular: 'strategy rule' },
+  { key: 'conditions', singular: 'condition' },
+  { key: 'overrides', singular: 'override' },
+  { key: 'evaluation_logs', singular: 'evaluation log' },
+  { key: 'sdk_registrations', singular: 'SDK registration' },
+  { key: 'project_memberships', singular: 'project membership' },
+  { key: 'environment_memberships', singular: 'environment membership' },
+];
 
 const TABS = [
   { href: '/dashboard', label: 'Overview', icon: LayoutGrid, exact: true },
@@ -114,6 +153,73 @@ export function DashboardNav() {
               }}
             />
 
+            {currentOrganization &&
+            hasOrgCapability(user, currentOrganization.id, 'org.manage') ? (
+              <RenameResourceDialog
+                title="Rename organization"
+                description="This name appears everywhere the organization is shown."
+                toastMessage="Organization renamed"
+                fields={[{ key: 'name', label: 'Name' }]}
+                initialValues={{ name: currentOrganization.name }}
+                onSave={async (values) => {
+                  await tenancyApi.renameOrganization(currentOrganization.id, {
+                    name: values.name,
+                  });
+                }}
+                onSaved={refresh}
+                triggerButton={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-foreground"
+                  />
+                }
+                triggerContent={
+                  <>
+                    <Pencil className="size-4" />
+                    <span className="sr-only">Rename organization</span>
+                  </>
+                }
+              />
+            ) : null}
+
+            {currentOrganization &&
+            hasOrgCapability(user, currentOrganization.id, 'org.delete') ? (
+              <DeleteResourceDialog<OrganizationDeletionImpact>
+                resourceLabel="organization"
+                resourceName={currentOrganization.name}
+                fetchImpact={() =>
+                  tenancyApi.organizationDeletionImpact(currentOrganization.id)
+                }
+                impactFields={ORGANIZATION_IMPACT_FIELDS}
+                blockedWhen={(impact) =>
+                  impact.other_members > 0
+                    ? `This organization has ${impact.other_members} other member(s); remove them first before deleting it.`
+                    : null
+                }
+                onDelete={(confirmName) =>
+                  tenancyApi.deleteOrganization(
+                    currentOrganization.id,
+                    confirmName,
+                  )
+                }
+                onDeleted={refresh}
+                triggerButton={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-destructive"
+                  />
+                }
+                triggerContent={
+                  <>
+                    <Trash2 className="size-4" />
+                    <span className="sr-only">Delete organization</span>
+                  </>
+                }
+              />
+            ) : null}
+
             <span aria-hidden="true" className="h-5 w-px bg-border" />
 
             {projects.length > 0 ? (
@@ -156,6 +262,67 @@ export function DashboardNav() {
                   refresh();
                   setCurrentProject(project);
                 }}
+              />
+            ) : null}
+
+            {currentProject ? (
+              <RenameResourceDialog
+                title="Rename project"
+                description="The name and key both appear across the dashboard and API."
+                toastMessage="Project renamed"
+                fields={[
+                  { key: 'name', label: 'Name' },
+                  { key: 'key', label: 'Key' },
+                ]}
+                initialValues={{
+                  name: currentProject.name,
+                  key: currentProject.key,
+                }}
+                onSave={async (values) => {
+                  await tenancyApi.renameProject(currentProject.id, values);
+                }}
+                onSaved={refresh}
+                triggerButton={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-foreground"
+                  />
+                }
+                triggerContent={
+                  <>
+                    <Pencil className="size-4" />
+                    <span className="sr-only">Rename project</span>
+                  </>
+                }
+              />
+            ) : null}
+
+            {currentProject ? (
+              <DeleteResourceDialog<ProjectDeletionImpact>
+                resourceLabel="project"
+                resourceName={currentProject.name}
+                fetchImpact={() =>
+                  tenancyApi.projectDeletionImpact(currentProject.id)
+                }
+                impactFields={PROJECT_IMPACT_FIELDS}
+                onDelete={(confirmName) =>
+                  tenancyApi.deleteProject(currentProject.id, confirmName)
+                }
+                onDeleted={refresh}
+                triggerButton={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-destructive"
+                  />
+                }
+                triggerContent={
+                  <>
+                    <Trash2 className="size-4" />
+                    <span className="sr-only">Delete project</span>
+                  </>
+                }
               />
             ) : null}
 
