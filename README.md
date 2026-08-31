@@ -294,8 +294,12 @@ In production, use the web dashboard at http://localhost:3000:
    - Attribute: country
    - Operator: Equals
    - Value: US
-7. **Watch it work**: Monitoring shows which SDKs are connected and every
-   evaluation they logged
+7. **Watch it work**: Monitoring shows which SDKs are connected
+
+   It will not show evaluations from a client evaluating locally, which is
+   what the React SDK does -- those never reach the server. Only calls to
+   `POST /api/v1/sdk/evaluate/` are recorded. See
+   [Consuming flags from your app](#consuming-flags-from-your-app).
 
 ### Killing a flag during an incident
 
@@ -334,6 +338,60 @@ For development and debugging, you can also use the Django admin at http://local
                                 # Forces the value, bypasses 3 and 4,
                                 # and is lifted when the incident ends.
 ```
+
+## Consuming flags from your app
+
+```bash
+npm install flagward-sdk-react
+```
+
+```tsx
+import { FlagwardProvider, useFlag } from "flagward-sdk-react";
+
+function App() {
+  return (
+    <FlagwardProvider apiKey="your-environment-api-key" host="http://localhost:8000">
+      <Checkout />
+    </FlagwardProvider>
+  );
+}
+
+function Checkout() {
+  const { value, isLoading } = useFlag("new-checkout");
+
+  // `value` is undefined until the first snapshot arrives, and stays
+  // undefined for a key this environment does not have -- so decide what
+  // an unknown flag means rather than letting undefined decide for you.
+  if (isLoading) return <LegacyCheckout />;
+
+  return value ? <NewCheckout /> : <LegacyCheckout />;
+}
+```
+
+The API key is the environment's, from the dashboard. A key scopes the SDK to
+one environment and nothing else.
+
+Source: [basb7/flagward-sdk-react](https://github.com/basb7/flagward-sdk-react).
+
+### Two ways to evaluate, and why it matters
+
+**Locally, which is what the React SDK does.** It downloads the flags and
+their rules once, evaluates in the browser, and an SSE stream keeps the
+snapshot fresh. Evaluation costs nothing, works offline, and the user's
+context never leaves the client.
+
+The trade-off is that **the rules travel to the browser**. Anyone can open
+devtools and read that you target `plan == "enterprise"`. Do not put anything
+secret in a targeting rule.
+
+**Remotely, via `POST /api/v1/sdk/evaluate/`.** You send the context, the
+server evaluates and answers. The rules stay on the server, at the cost of a
+round trip per evaluation and of sending user context off the client.
+
+This is also the only path that writes to `EvaluationLog`, so the
+Monitoring page counts remote evaluations only. A dashboard reading zero does
+not mean your flags are unused -- it means your clients are evaluating
+locally.
 
 ## Project Structure
 
