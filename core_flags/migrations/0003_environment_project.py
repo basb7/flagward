@@ -6,6 +6,17 @@ def backfill_default_project(apps, schema_editor):
     """
     Assign every existing NULL-project Environment to one Default project.
 
+    This writes rows, and the schema changes that follow it live in 0004 on
+    purpose. Postgres defers foreign-key trigger events to the end of a
+    transaction, so an ALTER TABLE touching a table this backfill just wrote
+    to is refused with "cannot ALTER TABLE ... because it has pending trigger
+    events". Django gives each migration its own transaction, so splitting
+    them is what lets the events flush before the ALTER runs.
+
+    An empty database never hit this: the early return below means no rows are
+    written, no trigger events are pending, and the ALTER succeeds. It only
+    fails where it matters -- on a database that already has environments.
+
     Trivial because the project is pre-release: at most one Organization and
     one Project are created, and only if a null row actually exists. No
     membership row is created — on a fresh boot `migrate` runs before any
@@ -44,17 +55,4 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.RunPython(backfill_default_project, migrations.RunPython.noop),
-        migrations.AlterField(
-            model_name="environment",
-            name="project",
-            field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE,
-                related_name="environments",
-                to="tenancy.project",
-            ),
-        ),
-        migrations.AlterUniqueTogether(
-            name="environment",
-            unique_together={("project", "key")},
-        ),
     ]
