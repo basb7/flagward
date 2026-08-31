@@ -199,6 +199,21 @@ export const authApi = {
     request<{ message: string }>('/api/v1/auth/refresh/', {
       method: 'POST',
     }),
+
+  getConfig: () =>
+    request<{ password_reset_enabled: boolean }>('/api/v1/auth/config/'),
+
+  passwordResetRequest: (email: string) =>
+    request<{ detail: string }>('/api/v1/auth/password-reset/request/', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  passwordResetConfirm: (token: string, password: string) =>
+    request<{ detail: string }>('/api/v1/auth/password-reset/confirm/', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
 };
 
 // Projects API (read-only here: creating/moving a Project is out of scope

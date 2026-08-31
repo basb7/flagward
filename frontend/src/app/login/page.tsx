@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { authApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { safeNextPath } from '@/lib/utils';
 
@@ -30,6 +31,23 @@ function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Defaults to hidden until the config check resolves true, so the link
+  // never flashes in and then disappears. A failed background check is
+  // treated the same as disabled -- it never surfaces as an error here.
+  const [passwordResetEnabled, setPasswordResetEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    authApi
+      .getConfig()
+      .then((config) => {
+        if (!cancelled) setPasswordResetEnabled(config.password_reset_enabled);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Only a same-origin, path-rooted `next` is ever honoured -- see
   // `safeNextPath` for what's rejected and why (open-redirect prevention).
@@ -86,9 +104,19 @@ function LoginForm() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-muted-foreground">
-                Password
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-muted-foreground">
+                  Password
+                </Label>
+                {passwordResetEnabled && (
+                  <Link
+                    href="/forgot-password"
+                    className="text-xs text-foreground underline-offset-4 hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                )}
+              </div>
               <Input
                 id="password"
                 type="password"
