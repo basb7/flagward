@@ -20,6 +20,11 @@ export function formatRelativeTime(isoTimestamp: string) {
   const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
   let value = (Date.parse(isoTimestamp) - Date.now()) / 1000;
 
+  // An unparseable timestamp makes `value` NaN, and
+  // Intl.RelativeTimeFormat#format throws a RangeError on a non-finite
+  // value. Fail the same way formatTimestamp does instead of crashing.
+  if (!Number.isFinite(value)) return 'Invalid Date';
+
   for (const [unit, step] of RELATIVE_UNITS) {
     if (Math.abs(value) < step) {
       return formatter.format(Math.round(value), unit);
