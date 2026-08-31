@@ -196,6 +196,26 @@ cp .env.example .env
 | `ALLOWED_HOSTS` | Allowed domains | `localhost,127.0.0.1` |
 | `CORS_ALLOWED_ORIGINS` | CORS origins | `http://localhost:3000` |
 | `CSRF_TRUSTED_ORIGINS` | CSRF origins | `http://localhost:3000` |
+| `EMAIL_HOST` | SMTP server host (optional -- see below) | unset |
+| `EMAIL_PORT` | SMTP server port | `587` |
+| `EMAIL_HOST_USER` | SMTP username | empty |
+| `EMAIL_HOST_PASSWORD` | SMTP password | empty |
+| `EMAIL_USE_TLS` | Use TLS for SMTP | `True` |
+| `DEFAULT_FROM_EMAIL` | "From" address for outgoing mail | `webmaster@localhost` |
+
+Email is entirely optional; a self-hosted instance keeps working with none of
+this set. It backs the password-reset flow (`POST
+/api/v1/auth/password-reset/request/` and `/confirm/`):
+
+* With `EMAIL_HOST` unset and `DEBUG=True`, outgoing messages print to the
+  terminal (Django's console email backend) instead of being sent, so the
+  whole flow is testable without a mail server.
+* With `EMAIL_HOST` unset and `DEBUG=False`, messages are silently discarded
+  instead -- printing a password-reset token to production stdout, which is
+  routinely shipped to log aggregators, is worse than not sending it.
+* `GET /api/v1/auth/config/` reports `password_reset_enabled` so the frontend
+  knows whether to offer a "forgot password" link at all -- it is `true`
+  whenever `EMAIL_HOST` is set, or whenever `DEBUG=True` (console backend).
 
 ### Production Deployment
 
@@ -626,6 +646,15 @@ Copy `.env.example` to `.env` and configure:
 | `ALLOWED_HOSTS` | Allowed domains | `localhost,127.0.0.1` |
 | `CORS_ALLOWED_ORIGINS` | CORS origins | `http://localhost:3000` |
 | `CSRF_TRUSTED_ORIGINS` | CSRF origins | `http://localhost:3000` |
+| `EMAIL_HOST` | SMTP server host (optional, powers password reset) | unset |
+| `EMAIL_PORT` | SMTP server port | `587` |
+| `EMAIL_HOST_USER` | SMTP username | empty |
+| `EMAIL_HOST_PASSWORD` | SMTP password | empty |
+| `EMAIL_USE_TLS` | Use TLS for SMTP | `True` |
+| `DEFAULT_FROM_EMAIL` | "From" address for outgoing mail | `webmaster@localhost` |
+
+See the "Environment Variables" section above for what happens with no
+`EMAIL_HOST` set, in both `DEBUG=True` and `DEBUG=False`.
 
 ## Development
 
