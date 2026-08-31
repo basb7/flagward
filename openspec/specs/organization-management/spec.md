@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Registration bootstrap, owner/admin-created users, per-project and
+Registration bootstrap, invitation-based membership, per-project and
 per-environment role grants, and seat accounting against the plan.
 
 ## Requirements
@@ -23,23 +23,36 @@ themselves instead of inheriting a generated name.
 - AND no `Organization` is created
 - AND no `OrganizationMembership` is created
 
-### Requirement: An Admin Creates and Attaches Users
+### Requirement: An Invitation Link Is the Only Way Into an Organization
 
-A member holding `org.manage_members` MUST be able to create a new user
-account and attach it to the organization with an organization role. This
-consumes one seat.
+A member holding `org.manage_members` MUST be able to issue a single-use,
+expiring invitation link scoped to one organization and one organization
+role, and MUST be able to revoke it before it is accepted. There is no
+endpoint through which one member sets another member's password -- an
+invitation is accepted by the invited person themselves, who chooses their
+own password (or already has an account and simply logs in). Accepting a
+still-valid invitation MUST create exactly one `OrganizationMembership` for
+the accepting user with the invitation's role, and consumes one seat at that
+moment, not before.
 
-#### Scenario: Admin creates a member
+#### Scenario: Admin invites and the recipient accepts
 
 - GIVEN an organization below its seat limit
-- WHEN an `ADMIN` creates a new user and assigns organization role `USER`
-- THEN a new `auth.User` and a new `OrganizationMembership` are created
+- WHEN an `ADMIN` issues an invitation with organization role `USER` and the recipient accepts it
+- THEN a new `OrganizationMembership` is created for the accepting user with role `USER`
 
-#### Scenario: Non-privileged member cannot create users
+#### Scenario: Non-privileged member cannot issue an invitation
 
 - GIVEN a user holds organization role `USER`
-- WHEN that user attempts to create a new organization member
-- THEN the system returns 403
+- WHEN that user attempts to issue an invitation
+- THEN the system rejects the request
+
+#### Scenario: A revoked or expired invitation cannot be accepted
+
+- GIVEN an invitation that has been revoked, or whose expiry has passed
+- WHEN someone attempts to accept it
+- THEN the system rejects the request
+- AND no `OrganizationMembership` is created
 
 ### Requirement: Per-Project and Per-Environment Role Grants
 

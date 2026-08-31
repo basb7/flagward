@@ -16,6 +16,24 @@ from tenancy.models import Invitation, Organization, OrganizationMembership, Org
 User = get_user_model()
 
 
+def _fill_seats(organization, count, start=0, role=OrganizationRole.USER):
+    """
+    Create `count` extra OrganizationMembership rows, each with a fresh user.
+
+    These users exist to occupy seats and never authenticate, so they are built
+    without a usable password. `create_user` would run the real password hasher
+    once per row -- at 500 rows that is real time spent proving that a counter
+    counts.
+    """
+    members = User.objects.bulk_create(
+        User(username=f"seat{i}", password="!") for i in range(start, start + count)
+    )
+    OrganizationMembership.objects.bulk_create(
+        OrganizationMembership(organization=organization, user=member, role=role)
+        for member in members
+    )
+
+
 @pytest.fixture
 def issue_invitation():
     """Callable building an Invitation row directly, bypassing the API."""
@@ -277,12 +295,9 @@ class TestInvitationAccept:
         assert OrganizationMembership.objects.filter(user=user).count() == 2
 
     def test_seat_limit_enforced_at_accept(self, api_client, user, issue_invitation):
+        """spec/organization-management: Seat Accounting Against the Plan -- At the boundary."""
         organization = Organization.objects.create(name="Starter Co", plan="STARTER")
-        members = User.objects.bulk_create(User(username=f"seat{i}", password="!") for i in range(5))
-        OrganizationMembership.objects.bulk_create(
-            OrganizationMembership(organization=organization, user=member, role=OrganizationRole.USER)
-            for member in members
-        )
+        _fill_seats(organization, 5)  # at the limit (5)
         _, raw_token = issue_invitation(organization=organization, role=OrganizationRole.USER)
         client = api_client(user)
 
@@ -295,11 +310,7 @@ class TestInvitationAccept:
     def test_seat_limit_does_not_consume_the_invitation(self, api_client, user, issue_invitation):
         """A rejected accept (seat limit) must leave the invitation usable."""
         organization = Organization.objects.create(name="Starter Co", plan="STARTER")
-        members = User.objects.bulk_create(User(username=f"full{i}", password="!") for i in range(5))
-        OrganizationMembership.objects.bulk_create(
-            OrganizationMembership(organization=organization, user=member, role=OrganizationRole.USER)
-            for member in members
-        )
+        _fill_seats(organization, 5)  # at the limit (5)
         invitation, raw_token = issue_invitation(organization=organization, role=OrganizationRole.USER)
         client = api_client(user)
 
@@ -307,3 +318,77 @@ class TestInvitationAccept:
 
         invitation.refresh_from_db()
         assert invitation.accepted_at is None
+
+
+@pytest.mark.django_db
+class TestSeatAccounting:
+    """
+    spec/organization-management: Seat Accounting Against the Plan (task 6.4),
+    moved onto the invitation-accept path -- the seat is now consumed when an
+    invitation is *accepted* (`InvitationAcceptView`), not at creation time.
+    "At the boundary" already lives above as
+    `TestInvitationAccept.test_seat_limit_enforced_at_accept`.
+    """
+
+    def test_under_the_limit_creates(self, api_client, user, issue_invitation):
+        organization = Organization.objects.create(name="Starter Co", plan="STARTER")
+        _fill_seats(organization, 4)  # 4 memberships, limit 5
+        _, raw_token = issue_invitation(organization=organization, role=OrganizationRole.USER)
+        client = api_client(user)
+
+        response = client.post(f"/api/v1/tenancy/invitations/{raw_token}/accept/")
+
+        assert response.status_code == 201
+        assert OrganizationMembership.objects.filter(organization=organization).count() == 5
+
+    def test_community_plan_never_blocks(self, api_client, user, organization, issue_invitation):
+        _fill_seats(organization, 500)
+        _, raw_token = issue_invitation(organization=organization, role=OrganizationRole.USER)
+        client = api_client(user)
+
+        response = client.post(f"/api/v1/tenancy/invitations/{raw_token}/accept/")
+
+        assert response.status_code == 201
+
+    def test_removing_a_member_frees_the_seat_immediately(self, api_client, user, issue_invitation):
+        organization = Organization.objects.create(name="Starter Co", plan="STARTER")
+        _fill_seats(organization, 5)  # at the limit (5)
+        victim = OrganizationMembership.objects.filter(organization=organization).first()
+        victim.delete()
+        _, raw_token = issue_invitation(organization=organization, role=OrganizationRole.USER)
+        client = api_client(user)
+
+        response = client.post(f"/api/v1/tenancy/invitations/{raw_token}/accept/")
+
+        assert response.status_code == 201
+
+    def test_deactivated_user_still_counts_toward_the_limit(self, api_client, user, issue_invitation):
+        organization = Organization.objects.create(name="Starter Co", plan="STARTER")
+        _fill_seats(organization, 5)  # at the limit (5)
+        deactivated = OrganizationMembership.objects.filter(organization=organization).first().user
+        deactivated.is_active = False
+        deactivated.save()
+        _, raw_token = issue_invitation(organization=organization, role=OrganizationRole.USER)
+        client = api_client(user)
+
+        response = client.post(f"/api/v1/tenancy/invitations/{raw_token}/accept/")
+
+        assert response.status_code == 400
+        assert response.data["error"] == "seat_limit_reached"
+
+    def test_plan_downgrade_does_not_evict_existing_members_but_blocks_new_ones(
+        self, api_client, user, issue_invitation
+    ):
+        organization = Organization.objects.create(name="Big Co", plan="TEAM")
+        _fill_seats(organization, 8)  # well under TEAM's 25
+        organization.plan = "STARTER"  # limit drops to 5, below the current 8
+        organization.save()
+        assert OrganizationMembership.objects.filter(organization=organization).count() == 8
+        _, raw_token = issue_invitation(organization=organization, role=OrganizationRole.USER)
+        client = api_client(user)
+
+        response = client.post(f"/api/v1/tenancy/invitations/{raw_token}/accept/")
+
+        assert response.status_code == 400
+        assert response.data["error"] == "seat_limit_reached"
+        assert OrganizationMembership.objects.filter(organization=organization).count() == 8

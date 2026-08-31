@@ -8,10 +8,7 @@ Returns 404" requirement at the top of the hierarchy.
 an organization has no parent tenant, so any authenticated user may create
 one and becomes its `ADMIN` in the same transaction -- the membership
 creation is not optional and not a second request, since a user must never
-end up with an organization it cannot administer. The `members` action
-(slice 6, tasks 6.3/6.5) never exposes a writable `organization` FK -- the
-target organization comes from the URL and is capability-checked explicitly,
-not through `CapabilityScopedFKMixin`.
+end up with an organization it cannot administer.
 
 `ProjectViewSet.create`'s `organization` FK is narrowed through
 `ProjectSerializer`'s `CapabilityScopedFKMixin` (design D5, Layer 2 -- the
@@ -20,7 +17,6 @@ only create-time gate, since DRF's permission class has no object on
 An unnarrowed FK here would reopen exactly the root-level hole the tenancy
 change closed (F3), one level above it.
 """
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
@@ -49,7 +45,6 @@ from .serializers import (
     EnvironmentMembershipUpdateSerializer,
     InvitationCreateSerializer,
     InvitationSerializer,
-    OrganizationMemberCreateSerializer,
     OrganizationMembershipSerializer,
     OrganizationMembershipUpdateSerializer,
     OrganizationSerializer,
@@ -58,11 +53,9 @@ from .serializers import (
     ProjectSerializer,
 )
 
-User = get_user_model()
-
 
 class OrganizationViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet):
-    """List, retrieve, create, and manage members of organizations the user can view."""
+    """List, retrieve, and create organizations the user can view."""
 
     queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
@@ -80,56 +73,6 @@ class OrganizationViewSet(mixins.CreateModelMixin, viewsets.ReadOnlyModelViewSet
                 organization=organization, user=self.request.user, role=OrganizationRole.ADMIN
             )
 
-    @action(detail=True, methods=["post"], url_path="members")
-    def members(self, request, pk=None):
-        """
-        Create a new `auth.User` and attach it to this organization with an
-        organization role (spec/organization-management: An Admin Creates and
-        Attaches Users).
-
-        Visibility (Layer 1) and the capability check (Layer 3) are kept
-        distinct on purpose: an organization the requester cannot even see is
-        a 404, while a visible organization the requester cannot administer
-        is a 403 -- the same split every other viewset in this app makes.
-        """
-        organization = self.get_object()  # scoped to orgs_with(ORG_VIEW) -> 404 if invisible
-        if not orgs_with(request.user, Capability.ORG_MANAGE_MEMBERS).filter(pk=organization.pk).exists():
-            raise PermissionDenied()
-
-        payload = OrganizationMemberCreateSerializer(data=request.data)
-        payload.is_valid(raise_exception=True)
-
-        with transaction.atomic():
-            # select_for_update() serializes the seat check against the
-            # insert: without the row lock, two concurrent requests can both
-            # read a count under the limit and both commit, oversubscribing
-            # the plan.
-            locked_organization = Organization.objects.select_for_update().get(pk=organization.pk)
-            limit = max_seats(locked_organization.plan)
-            if limit is not None:
-                seat_count = OrganizationMembership.objects.filter(
-                    organization=locked_organization
-                ).count()
-                if seat_count >= limit:
-                    return Response(
-                        {"error": "seat_limit_reached"}, status=status.HTTP_400_BAD_REQUEST
-                    )
-
-            new_user = User.objects.create_user(
-                username=payload.validated_data["username"],
-                email=payload.validated_data.get("email", ""),
-                password=payload.validated_data["password"],
-            )
-            membership = OrganizationMembership.objects.create(
-                organization=locked_organization,
-                user=new_user,
-                role=payload.validated_data["role"],
-            )
-
-        return Response(
-            OrganizationMembershipSerializer(membership).data, status=status.HTTP_201_CREATED
-        )
-
 
 class OrganizationMembershipViewSet(
     mixins.ListModelMixin,
@@ -139,8 +82,9 @@ class OrganizationMembershipViewSet(
 ):
     """
     List, update (role change), and delete for `OrganizationMembership` rows.
-    Creation happens through `OrganizationViewSet.members`, which also
-    creates the `User` in the same request.
+    Creation happens only through `InvitationAcceptView` -- an invitation
+    link is the only way a membership row comes into existence for anyone
+    but the organization's founding `ADMIN` (see `OrganizationViewSet.perform_create`).
 
     Listing is scoped by `ORG_VIEW`, not `ORG_MANAGE_MEMBERS` (task 8.2/8.3):
     seeing who else shares your organization is ordinary visibility, the

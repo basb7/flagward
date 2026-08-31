@@ -56,7 +56,6 @@ import {
   invitationsApi,
   type OrganizationMembership,
   type OrganizationRole,
-  organizationMembersApi,
   organizationMembershipsApi,
   type ProjectMembership,
   type ProjectRole,
@@ -128,15 +127,6 @@ export default function MembersPage() {
     [],
   );
   const [orgEnvGrants, setOrgEnvGrants] = useState<EnvironmentMembership[]>([]);
-
-  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
-  const [isSavingMember, setIsSavingMember] = useState(false);
-  const [newMember, setNewMember] = useState({
-    username: '',
-    email: '',
-    password: '',
-    role: 'USER' as OrganizationRole,
-  });
 
   const [memberToRemove, setMemberToRemove] =
     useState<OrganizationMembership | null>(null);
@@ -439,22 +429,6 @@ export default function MembersPage() {
     );
   }, [activeMember, grantForm, projectGrants, envGrants]);
 
-  const handleAddMember = async () => {
-    if (!currentOrganization) return;
-    setIsSavingMember(true);
-    try {
-      await organizationMembersApi.create(currentOrganization.id, newMember);
-      setIsAddMemberOpen(false);
-      setNewMember({ username: '', email: '', password: '', role: 'USER' });
-      success(`${newMember.username} added to the organization`);
-      loadOrgMembers();
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to add member');
-    } finally {
-      setIsSavingMember(false);
-    }
-  };
-
   const closeInviteDialog = () => {
     setIsInviteOpen(false);
     setCreatedInvite(null);
@@ -671,79 +645,82 @@ export default function MembersPage() {
         title="Members"
         description={`Manage who has access to ${currentOrganization.name} and what they can do.`}
         action={
-          <>
-            <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
-              <DialogTrigger render={<Button />}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Add member
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add a member</DialogTitle>
-                  <DialogDescription>
-                    Creates a new account and attaches it to this organization.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
+          <Dialog
+            open={isInviteOpen}
+            onOpenChange={(open) => {
+              if (open) {
+                setIsInviteOpen(true);
+              } else {
+                closeInviteDialog();
+              }
+            }}
+          >
+            <DialogTrigger render={<Button variant="outline" />}>
+              <Mail className="mr-2 h-4 w-4" />
+              Invite by link
+            </DialogTrigger>
+            <DialogContent>
+              {createdInvite ? (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Invitation link created</DialogTitle>
+                    <DialogDescription>
+                      This link is shown once and can never be retrieved again
+                      -- copy it now and send it to the person you're inviting.
+                    </DialogDescription>
+                  </DialogHeader>
                   <div className="space-y-2">
-                    <Label htmlFor="member-username">Username</Label>
-                    <Input
-                      id="member-username"
-                      value={newMember.username}
-                      onChange={(e) =>
-                        setNewMember({ ...newMember, username: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="member-email">Email (optional)</Label>
-                    <Input
-                      id="member-email"
-                      type="email"
-                      value={newMember.email}
-                      onChange={(e) =>
-                        setNewMember({ ...newMember, email: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="member-password">Password</Label>
-                    <Input
-                      id="member-password"
-                      type="password"
-                      aria-describedby="member-password-hint"
-                      value={newMember.password}
-                      onChange={(e) =>
-                        setNewMember({ ...newMember, password: e.target.value })
-                      }
-                    />
-                    {/*
-                    The Add member button stays disabled until this is long
-                    enough. Saying so beats a control that refuses to enable
-                    and never explains why. The server checks more than length
-                    -- common and all-numeric passwords are rejected too -- and
-                    those come back as an error rather than being predicted
-                    here, so one policy lives in one place.
-                  */}
-                    <p
-                      id="member-password-hint"
-                      className="text-xs text-muted-foreground"
-                    >
-                      At least 8 characters. Avoid common or all-numeric
-                      passwords.
+                    <Label htmlFor="invite-link">Single-use link</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="invite-link"
+                        readOnly
+                        value={`${window.location.origin}/invite/${createdInvite.token}`}
+                        onFocus={(e) => e.currentTarget.select()}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={handleCopyInviteLink}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      Role:{' '}
+                      <Badge
+                        variant={
+                          createdInvite.role === 'ADMIN' ? 'warning' : 'muted'
+                        }
+                      >
+                        {createdInvite.role}
+                      </Badge>
+                      -- expires {formatRelativeTime(createdInvite.expires_at)}.
                     </p>
                   </div>
+                  <DialogFooter>
+                    <Button onClick={closeInviteDialog}>Done</Button>
+                  </DialogFooter>
+                </>
+              ) : (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Invite by link</DialogTitle>
+                    <DialogDescription>
+                      Creates a single-use link. Whoever opens it confirms and
+                      joins with the role you pick here -- the plaintext token
+                      is only ever shown once, right after you create it.
+                    </DialogDescription>
+                  </DialogHeader>
                   <div className="space-y-2">
-                    <Label htmlFor="member-role">Organization role</Label>
+                    <Label htmlFor="invite-role">Organization role</Label>
                     <select
-                      id="member-role"
+                      id="invite-role"
                       className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
-                      value={newMember.role}
+                      value={inviteRole}
                       onChange={(e) =>
-                        setNewMember({
-                          ...newMember,
-                          role: e.target.value as OrganizationRole,
-                        })
+                        setInviteRole(e.target.value as OrganizationRole)
                       }
                     >
                       {ORG_ROLE_OPTIONS.map((option) => (
@@ -752,145 +729,25 @@ export default function MembersPage() {
                         </option>
                       ))}
                     </select>
-                    {newMember.role === 'ADMIN' ? (
-                      <p className="flex items-start gap-1.5 text-xs text-warning">
-                        <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-                        Organization Admin holds `org.delete` — it cascades to
-                        every project, environment, flag, rule and override in
-                        this organization.
-                      </p>
-                    ) : null}
                   </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsAddMemberOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleAddMember}
-                    disabled={
-                      isSavingMember ||
-                      !newMember.username ||
-                      newMember.password.length < 8
-                    }
-                  >
-                    {isSavingMember ? (
-                      <Spinner size="sm" className="mr-2" />
-                    ) : null}
-                    Add member
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Dialog
-              open={isInviteOpen}
-              onOpenChange={(open) => {
-                if (open) {
-                  setIsInviteOpen(true);
-                } else {
-                  closeInviteDialog();
-                }
-              }}
-            >
-              <DialogTrigger render={<Button variant="outline" />}>
-                <Mail className="mr-2 h-4 w-4" />
-                Invite by link
-              </DialogTrigger>
-              <DialogContent>
-                {createdInvite ? (
-                  <>
-                    <DialogHeader>
-                      <DialogTitle>Invitation link created</DialogTitle>
-                      <DialogDescription>
-                        This link is shown once and can never be retrieved again
-                        -- copy it now and send it to the person you're
-                        inviting.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-2">
-                      <Label htmlFor="invite-link">Single-use link</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="invite-link"
-                          readOnly
-                          value={`${window.location.origin}/invite/${createdInvite.token}`}
-                          onFocus={(e) => e.currentTarget.select()}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          onClick={handleCopyInviteLink}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        Role:{' '}
-                        <Badge
-                          variant={
-                            createdInvite.role === 'ADMIN' ? 'warning' : 'muted'
-                          }
-                        >
-                          {createdInvite.role}
-                        </Badge>
-                        -- expires{' '}
-                        {formatRelativeTime(createdInvite.expires_at)}.
-                      </p>
-                    </div>
-                    <DialogFooter>
-                      <Button onClick={closeInviteDialog}>Done</Button>
-                    </DialogFooter>
-                  </>
-                ) : (
-                  <>
-                    <DialogHeader>
-                      <DialogTitle>Invite by link</DialogTitle>
-                      <DialogDescription>
-                        Creates a single-use link. Whoever opens it confirms and
-                        joins with the role you pick here -- the plaintext token
-                        is only ever shown once, right after you create it.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-2">
-                      <Label htmlFor="invite-role">Organization role</Label>
-                      <select
-                        id="invite-role"
-                        className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
-                        value={inviteRole}
-                        onChange={(e) =>
-                          setInviteRole(e.target.value as OrganizationRole)
-                        }
-                      >
-                        {ORG_ROLE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={closeInviteDialog}>
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={handleCreateInvite}
-                        disabled={isCreatingInvite}
-                      >
-                        {isCreatingInvite ? (
-                          <Spinner size="sm" className="mr-2" />
-                        ) : null}
-                        Create link
-                      </Button>
-                    </DialogFooter>
-                  </>
-                )}
-              </DialogContent>
-            </Dialog>
-          </>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={closeInviteDialog}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleCreateInvite}
+                      disabled={isCreatingInvite}
+                    >
+                      {isCreatingInvite ? (
+                        <Spinner size="sm" className="mr-2" />
+                      ) : null}
+                      Create link
+                    </Button>
+                  </DialogFooter>
+                </>
+              )}
+            </DialogContent>
+          </Dialog>
         }
       />
 

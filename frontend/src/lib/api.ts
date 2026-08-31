@@ -647,23 +647,6 @@ export interface OrganizationMembership {
   created_at: string;
 }
 
-export const organizationMembersApi = {
-  /** Creates a brand-new `auth.User` and attaches it with an org role. */
-  create: (
-    organizationId: string,
-    data: {
-      username: string;
-      email?: string;
-      password: string;
-      role: OrganizationRole;
-    },
-  ) =>
-    request<OrganizationMembership>(
-      `/api/v1/tenancy/organizations/${organizationId}/members/`,
-      { method: 'POST', body: JSON.stringify(data) },
-    ),
-};
-
 export const organizationMembershipsApi = {
   /**
    * Scoped by `org.view` on the backend, across every organization the
