@@ -108,6 +108,11 @@ async function request<T>(
 
     if (error.detail) {
       errorMessage = error.detail;
+    } else if (typeof error.error === 'string') {
+      // Some endpoints (invitation accept) answer with a bare error code as
+      // `{"error": "<code>"}` rather than DRF's usual `detail`/`message`
+      // shape -- surface the code itself so callers can map it to copy.
+      errorMessage = error.error;
     } else if (error.message) {
       errorMessage = error.message;
     } else if (typeof error === 'object') {
@@ -754,6 +759,77 @@ export const environmentMembershipsApi = {
     request<void>(`/api/v1/tenancy/environment-memberships/${membershipId}/`, {
       method: 'DELETE',
     }),
+};
+
+// Invitations API: single-use organization invitation links (backend #25).
+export interface Invitation {
+  id: string;
+  organization: string;
+  role: OrganizationRole;
+  created_by: number | null;
+  created_by_username: string | null;
+  expires_at: string;
+  accepted_by: number | null;
+  accepted_by_username: string | null;
+  accepted_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  status: 'accepted' | 'revoked' | 'expired' | 'pending';
+}
+
+/**
+ * Only the create response carries this -- the plaintext token is never in
+ * any read serializer, so if the caller loses it here, it's gone for good.
+ */
+export interface InvitationWithToken extends Invitation {
+  token: string;
+}
+
+export interface InvitationPreview {
+  organization_name: string;
+  role: OrganizationRole;
+}
+
+export const invitationsApi = {
+  /**
+   * Scoped by `org.manage_members` server-side; no `?organization=` filter
+   * exists on this viewset, so callers narrow to one organization
+   * client-side -- same pattern as `organizationMembershipsApi`.
+   */
+  list: (params: { page?: number } = {}) =>
+    request<PaginatedResponse<Invitation>>(
+      `/api/v1/tenancy/invitations/${buildQuery({ page: params.page ?? 1 })}`,
+    ),
+
+  create: (data: { organization: string; role: OrganizationRole }) =>
+    request<InvitationWithToken>('/api/v1/tenancy/invitations/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  revoke: (id: string) =>
+    request<Invitation>(`/api/v1/tenancy/invitations/${id}/revoke/`, {
+      method: 'POST',
+    }),
+
+  /**
+   * Public, unauthenticated. Every invalid state -- unknown, expired,
+   * revoked, already used -- answers the identical generic 404 on purpose,
+   * so this can never be used to probe a token.
+   */
+  preview: (token: string) =>
+    request<InvitationPreview>(`/api/v1/tenancy/invitations/${token}/preview/`),
+
+  /**
+   * Authenticated. Distinguishable failures: 410 `invitation_revoked` /
+   * `invitation_expired`, 409 `invitation_already_used` / `already_a_member`,
+   * 400 `seat_limit_reached`, 404 `invitation_not_found`.
+   */
+  accept: (token: string) =>
+    request<OrganizationMembership>(
+      `/api/v1/tenancy/invitations/${token}/accept/`,
+      { method: 'POST' },
+    ),
 };
 
 /**

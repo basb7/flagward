@@ -1,8 +1,11 @@
 'use client';
 
 import {
+  Ban,
+  Copy,
   Info,
   Lock,
+  Mail,
   Plus,
   ShieldAlert,
   UserMinus,
@@ -48,6 +51,9 @@ import {
   effectiveCapabilitiesApi,
   environmentMembershipsApi,
   environmentsApi,
+  type Invitation,
+  type InvitationWithToken,
+  invitationsApi,
   type OrganizationMembership,
   type OrganizationRole,
   organizationMembersApi,
@@ -58,6 +64,7 @@ import {
 } from '@/lib/api';
 import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
+import { formatRelativeTime } from '@/lib/utils';
 
 /**
  * The Members screen never renders a checkbox grid: under union role
@@ -135,6 +142,22 @@ export default function MembersPage() {
     useState<OrganizationMembership | null>(null);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
 
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [isLoadingInvitations, setIsLoadingInvitations] = useState(true);
+
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteRole, setInviteRole] = useState<OrganizationRole>('USER');
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
+  // Holds the plaintext token only for the moment between creating it and
+  // closing this dialog -- it is never retrievable again after that (the
+  // backend never returns it from any read endpoint).
+  const [createdInvite, setCreatedInvite] =
+    useState<InvitationWithToken | null>(null);
+
+  const [invitationToRevoke, setInvitationToRevoke] =
+    useState<Invitation | null>(null);
+  const [isRevokingInvitation, setIsRevokingInvitation] = useState(false);
+
   const [activeMember, setActiveMember] = useState<ActiveMember | null>(null);
   const [isGrantDialogOpen, setIsGrantDialogOpen] = useState(false);
   const [grantForm, setGrantForm] = useState<GrantForm>({
@@ -177,6 +200,38 @@ export default function MembersPage() {
   useEffect(() => {
     loadOrgMembers();
   }, [loadOrgMembers]);
+
+  const loadInvitations = useCallback(async () => {
+    if (!currentOrganization) {
+      setInvitations([]);
+      setIsLoadingInvitations(false);
+      return;
+    }
+    setIsLoadingInvitations(true);
+    try {
+      const response = await invitationsApi.list();
+      // No `?organization=` filter exists on this viewset either -- narrow
+      // client-side, same pattern as organization memberships above.
+      setInvitations(
+        response.results.filter(
+          (invitation) => invitation.organization === currentOrganization.id,
+        ),
+      );
+    } catch {
+      setInvitations([]);
+    } finally {
+      setIsLoadingInvitations(false);
+    }
+  }, [currentOrganization]);
+
+  useEffect(() => {
+    loadInvitations();
+  }, [loadInvitations]);
+
+  const pendingInvitations = useMemo(
+    () => invitations.filter((invitation) => invitation.status === 'pending'),
+    [invitations],
+  );
 
   const loadProjectGrants = useCallback(async () => {
     if (!currentProject) {
@@ -400,6 +455,61 @@ export default function MembersPage() {
     }
   };
 
+  const closeInviteDialog = () => {
+    setIsInviteOpen(false);
+    setCreatedInvite(null);
+    setInviteRole('USER');
+  };
+
+  const handleCreateInvite = async () => {
+    if (!currentOrganization) return;
+    setIsCreatingInvite(true);
+    try {
+      const invitation = await invitationsApi.create({
+        organization: currentOrganization.id,
+        role: inviteRole,
+      });
+      // Swap the dialog into its reveal phase -- this is the one and only
+      // time the plaintext token is ever visible.
+      setCreatedInvite(invitation);
+      loadInvitations();
+    } catch (err) {
+      showError(
+        err instanceof Error ? err.message : 'Failed to create invitation',
+      );
+    } finally {
+      setIsCreatingInvite(false);
+    }
+  };
+
+  const handleCopyInviteLink = async () => {
+    if (!createdInvite) return;
+    const link = `${window.location.origin}/invite/${createdInvite.token}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      success('Invitation link copied');
+    } catch {
+      showError('Could not copy automatically -- select and copy it manually');
+    }
+  };
+
+  const handleRevokeInvitation = async () => {
+    if (!invitationToRevoke) return;
+    setIsRevokingInvitation(true);
+    try {
+      await invitationsApi.revoke(invitationToRevoke.id);
+      success('Invitation revoked');
+      setInvitationToRevoke(null);
+      loadInvitations();
+    } catch (err) {
+      showError(
+        err instanceof Error ? err.message : 'Failed to revoke invitation',
+      );
+    } finally {
+      setIsRevokingInvitation(false);
+    }
+  };
+
   const handlePreview = async () => {
     if (!activeMember || !currentOrganization || !currentProject) return;
     if (grantForm.level === 'environment' && !grantForm.targetId) return;
@@ -561,52 +671,53 @@ export default function MembersPage() {
         title="Members"
         description={`Manage who has access to ${currentOrganization.name} and what they can do.`}
         action={
-          <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
-            <DialogTrigger render={<Button />}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Add member
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add a member</DialogTitle>
-                <DialogDescription>
-                  Creates a new account and attaches it to this organization.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="member-username">Username</Label>
-                  <Input
-                    id="member-username"
-                    value={newMember.username}
-                    onChange={(e) =>
-                      setNewMember({ ...newMember, username: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="member-email">Email (optional)</Label>
-                  <Input
-                    id="member-email"
-                    type="email"
-                    value={newMember.email}
-                    onChange={(e) =>
-                      setNewMember({ ...newMember, email: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="member-password">Password</Label>
-                  <Input
-                    id="member-password"
-                    type="password"
-                    aria-describedby="member-password-hint"
-                    value={newMember.password}
-                    onChange={(e) =>
-                      setNewMember({ ...newMember, password: e.target.value })
-                    }
-                  />
-                  {/*
+          <>
+            <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
+              <DialogTrigger render={<Button />}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add member
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add a member</DialogTitle>
+                  <DialogDescription>
+                    Creates a new account and attaches it to this organization.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="member-username">Username</Label>
+                    <Input
+                      id="member-username"
+                      value={newMember.username}
+                      onChange={(e) =>
+                        setNewMember({ ...newMember, username: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-email">Email (optional)</Label>
+                    <Input
+                      id="member-email"
+                      type="email"
+                      value={newMember.email}
+                      onChange={(e) =>
+                        setNewMember({ ...newMember, email: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-password">Password</Label>
+                    <Input
+                      id="member-password"
+                      type="password"
+                      aria-describedby="member-password-hint"
+                      value={newMember.password}
+                      onChange={(e) =>
+                        setNewMember({ ...newMember, password: e.target.value })
+                      }
+                    />
+                    {/*
                     The Add member button stays disabled until this is long
                     enough. Saying so beats a control that refuses to enable
                     and never explains why. The server checks more than length
@@ -614,66 +725,172 @@ export default function MembersPage() {
                     those come back as an error rather than being predicted
                     here, so one policy lives in one place.
                   */}
-                  <p
-                    id="member-password-hint"
-                    className="text-xs text-muted-foreground"
-                  >
-                    At least 8 characters. Avoid common or all-numeric
-                    passwords.
-                  </p>
+                    <p
+                      id="member-password-hint"
+                      className="text-xs text-muted-foreground"
+                    >
+                      At least 8 characters. Avoid common or all-numeric
+                      passwords.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-role">Organization role</Label>
+                    <select
+                      id="member-role"
+                      className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
+                      value={newMember.role}
+                      onChange={(e) =>
+                        setNewMember({
+                          ...newMember,
+                          role: e.target.value as OrganizationRole,
+                        })
+                      }
+                    >
+                      {ORG_ROLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {newMember.role === 'ADMIN' ? (
+                      <p className="flex items-start gap-1.5 text-xs text-warning">
+                        <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+                        Organization Admin holds `org.delete` — it cascades to
+                        every project, environment, flag, rule and override in
+                        this organization.
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="member-role">Organization role</Label>
-                  <select
-                    id="member-role"
-                    className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
-                    value={newMember.role}
-                    onChange={(e) =>
-                      setNewMember({
-                        ...newMember,
-                        role: e.target.value as OrganizationRole,
-                      })
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsAddMemberOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAddMember}
+                    disabled={
+                      isSavingMember ||
+                      !newMember.username ||
+                      newMember.password.length < 8
                     }
                   >
-                    {ORG_ROLE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {newMember.role === 'ADMIN' ? (
-                    <p className="flex items-start gap-1.5 text-xs text-warning">
-                      <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-                      Organization Admin holds `org.delete` — it cascades to
-                      every project, environment, flag, rule and override in
-                      this organization.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsAddMemberOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAddMember}
-                  disabled={
-                    isSavingMember ||
-                    !newMember.username ||
-                    newMember.password.length < 8
-                  }
-                >
-                  {isSavingMember ? (
-                    <Spinner size="sm" className="mr-2" />
-                  ) : null}
-                  Add member
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                    {isSavingMember ? (
+                      <Spinner size="sm" className="mr-2" />
+                    ) : null}
+                    Add member
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog
+              open={isInviteOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  setIsInviteOpen(true);
+                } else {
+                  closeInviteDialog();
+                }
+              }}
+            >
+              <DialogTrigger render={<Button variant="outline" />}>
+                <Mail className="mr-2 h-4 w-4" />
+                Invite by link
+              </DialogTrigger>
+              <DialogContent>
+                {createdInvite ? (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle>Invitation link created</DialogTitle>
+                      <DialogDescription>
+                        This link is shown once and can never be retrieved again
+                        -- copy it now and send it to the person you're
+                        inviting.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                      <Label htmlFor="invite-link">Single-use link</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="invite-link"
+                          readOnly
+                          value={`${window.location.origin}/invite/${createdInvite.token}`}
+                          onFocus={(e) => e.currentTarget.select()}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={handleCopyInviteLink}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        Role:{' '}
+                        <Badge
+                          variant={
+                            createdInvite.role === 'ADMIN' ? 'warning' : 'muted'
+                          }
+                        >
+                          {createdInvite.role}
+                        </Badge>
+                        -- expires{' '}
+                        {formatRelativeTime(createdInvite.expires_at)}.
+                      </p>
+                    </div>
+                    <DialogFooter>
+                      <Button onClick={closeInviteDialog}>Done</Button>
+                    </DialogFooter>
+                  </>
+                ) : (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle>Invite by link</DialogTitle>
+                      <DialogDescription>
+                        Creates a single-use link. Whoever opens it confirms and
+                        joins with the role you pick here -- the plaintext token
+                        is only ever shown once, right after you create it.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                      <Label htmlFor="invite-role">Organization role</Label>
+                      <select
+                        id="invite-role"
+                        className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
+                        value={inviteRole}
+                        onChange={(e) =>
+                          setInviteRole(e.target.value as OrganizationRole)
+                        }
+                      >
+                        {ORG_ROLE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={closeInviteDialog}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleCreateInvite}
+                        disabled={isCreatingInvite}
+                      >
+                        {isCreatingInvite ? (
+                          <Spinner size="sm" className="mr-2" />
+                        ) : null}
+                        Create link
+                      </Button>
+                    </DialogFooter>
+                  </>
+                )}
+              </DialogContent>
+            </Dialog>
+          </>
         }
       />
 
@@ -769,6 +986,79 @@ export default function MembersPage() {
                             Remove
                           </Button>
                         )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pending invitations</CardTitle>
+          <CardDescription>
+            Single-use links waiting to be opened. Revoking one invalidates it
+            immediately. Accepted, expired and already-revoked invitations don't
+            show up here.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingInvitations ? (
+            <div className="flex justify-center py-8">
+              <Spinner size="lg" />
+            </div>
+          ) : pendingInvitations.length === 0 ? (
+            <EmptyState
+              icon={Mail}
+              title="No pending invitations"
+              description="Invite someone by link from the button above."
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border">
+                  <TableHead className="text-muted-foreground">Role</TableHead>
+                  <TableHead className="text-muted-foreground">
+                    Invited by
+                  </TableHead>
+                  <TableHead className="text-muted-foreground">
+                    Expires
+                  </TableHead>
+                  <TableHead className="w-[120px]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingInvitations.map((invitation) => (
+                  <TableRow key={invitation.id} className="border-border">
+                    <TableCell>
+                      <Badge
+                        variant={
+                          invitation.role === 'ADMIN' ? 'warning' : 'muted'
+                        }
+                      >
+                        {invitation.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {invitation.created_by_username ?? 'Unknown'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatRelativeTime(invitation.expires_at)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setInvitationToRevoke(invitation)}
+                        >
+                          <Ban className="mr-1 h-3.5 w-3.5" />
+                          Revoke
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1065,6 +1355,42 @@ export default function MembersPage() {
             >
               {isRemovingMember ? <Spinner size="sm" className="mr-2" /> : null}
               Remove member
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={invitationToRevoke !== null}
+        onOpenChange={(open) => {
+          if (!open) setInvitationToRevoke(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revoke this invitation?</DialogTitle>
+            <DialogDescription>
+              The link stops working immediately. Anyone who already has it can
+              no longer use it to join {currentOrganization.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setInvitationToRevoke(null)}
+              disabled={isRevokingInvitation}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRevokeInvitation}
+              disabled={isRevokingInvitation}
+            >
+              {isRevokingInvitation ? (
+                <Spinner size="sm" className="mr-2" />
+              ) : null}
+              Revoke invitation
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -14,15 +14,30 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
 import { authApi } from '@/lib/api';
+import { safeNextPath } from '@/lib/utils';
 
-export default function RegisterPage() {
+// Next.js 16 requires a `<Suspense>` boundary around any Client Component
+// that calls `useSearchParams`, or the production build fails (see
+// node_modules/next/dist/docs/.../use-search-params.md). The form is split
+// out so the Suspense boundary wraps only the part that needs it.
+function RegisterForm() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Only a same-origin, path-rooted `next` is ever honoured -- see
+  // `safeNextPath` for what's rejected and why (open-redirect prevention).
+  const rawNext = searchParams.get('next');
+  const next = safeNextPath(rawNext);
+  const loginHref = rawNext
+    ? `/login?next=${encodeURIComponent(next)}`
+    : '/login';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +46,7 @@ export default function RegisterPage() {
 
     try {
       await authApi.register(username, email, password);
-      router.push('/dashboard');
+      router.push(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
@@ -104,7 +119,7 @@ export default function RegisterPage() {
             <p className="text-center text-sm text-muted-foreground">
               Already have an account?{' '}
               <Link
-                href="/login"
+                href={loginHref}
                 className="text-foreground underline-offset-4 hover:underline"
               >
                 Sign in
@@ -114,5 +129,21 @@ export default function RegisterPage() {
         </form>
       </Card>
     </div>
+  );
+}
+
+function RegisterFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <Spinner size="lg" />
+    </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<RegisterFallback />}>
+      <RegisterForm />
+    </Suspense>
   );
 }
