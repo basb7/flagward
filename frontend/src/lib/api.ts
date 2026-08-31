@@ -632,6 +632,44 @@ export interface Project {
   created_at: string;
 }
 
+/**
+ * Counts of everything a `DELETE` on an organization would cascade into,
+ * from `GET .../deletion_impact/` -- fetched before a delete can be
+ * confirmed, so "are you sure?" can say what "sure" actually costs.
+ * `other_members` is not merely informational: the backend refuses the
+ * delete outright while it is non-zero (see `deleteOrganization`).
+ */
+export interface OrganizationDeletionImpact {
+  [key: string]: number;
+  projects: number;
+  environments: number;
+  flags: number;
+  strategy_rules: number;
+  conditions: number;
+  overrides: number;
+  evaluation_logs: number;
+  sdk_registrations: number;
+  organization_memberships: number;
+  project_memberships: number;
+  environment_memberships: number;
+  invitations: number;
+  other_members: number;
+}
+
+/** Same shape one level down -- see `OrganizationDeletionImpact`. No membership-blocking rule applies here. */
+export interface ProjectDeletionImpact {
+  [key: string]: number;
+  environments: number;
+  flags: number;
+  strategy_rules: number;
+  conditions: number;
+  overrides: number;
+  evaluation_logs: number;
+  sdk_registrations: number;
+  project_memberships: number;
+  environment_memberships: number;
+}
+
 export const tenancyApi = {
   organizations: () =>
     request<PaginatedResponse<Organization>>('/api/v1/tenancy/organizations/'),
@@ -642,6 +680,29 @@ export const tenancyApi = {
       body: JSON.stringify(data),
     }),
 
+  renameOrganization: (id: string, data: { name: string }) =>
+    request<Organization>(`/api/v1/tenancy/organizations/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  organizationDeletionImpact: (id: string) =>
+    request<OrganizationDeletionImpact>(
+      `/api/v1/tenancy/organizations/${id}/deletion_impact/`,
+    ),
+
+  /**
+   * `confirmName` must be the organization's exact current name -- the
+   * backend 400s with a `confirm_name` field error otherwise, and again with
+   * `{"error": "organization_has_other_members"}` (whose `detail` names the
+   * count) while any member besides the caller still belongs to it.
+   */
+  deleteOrganization: (id: string, confirmName: string) =>
+    request<void>(`/api/v1/tenancy/organizations/${id}/`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm_name: confirmName }),
+    }),
+
   projects: () =>
     request<PaginatedResponse<Project>>('/api/v1/tenancy/projects/'),
 
@@ -649,6 +710,25 @@ export const tenancyApi = {
     request<Project>('/api/v1/tenancy/projects/', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  /** `organization` is immutable on update -- only `name` and `key` may change. */
+  renameProject: (id: string, data: { name?: string; key?: string }) =>
+    request<Project>(`/api/v1/tenancy/projects/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  projectDeletionImpact: (id: string) =>
+    request<ProjectDeletionImpact>(
+      `/api/v1/tenancy/projects/${id}/deletion_impact/`,
+    ),
+
+  /** `confirmName` must be the project's exact current name. See `deleteOrganization`. */
+  deleteProject: (id: string, confirmName: string) =>
+    request<void>(`/api/v1/tenancy/projects/${id}/`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm_name: confirmName }),
     }),
 };
 
