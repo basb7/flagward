@@ -1,9 +1,6 @@
 """
 Serializers for the tenancy API.
 """
-from django.contrib.auth import get_user_model
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from tenancy.capabilities import Capability
@@ -20,8 +17,6 @@ from tenancy.models import (
 )
 from tenancy.scoping import environments_with, orgs_with, projects_with
 from tenancy.serializers import CapabilityScopedFKMixin
-
-User = get_user_model()
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -69,44 +64,6 @@ class OrganizationMembershipSerializer(serializers.ModelSerializer):
         model = OrganizationMembership
         fields = ['id', 'organization', 'user', 'username', 'role', 'created_at']
         read_only_fields = fields
-
-
-class OrganizationMemberCreateSerializer(serializers.Serializer):
-    """
-    Input for `POST /organizations/{id}/members/` (spec/organization-management:
-    An Admin Creates and Attaches Users). Creates a brand-new `auth.User`, not
-    an invitation of an existing one -- the requirement is explicit that this
-    endpoint both creates the account and attaches it.
-    """
-    username = serializers.CharField(max_length=150)
-    email = serializers.EmailField(required=False, allow_blank=True, default="")
-    password = serializers.CharField(write_only=True)
-    role = serializers.ChoiceField(choices=OrganizationRole.choices)
-
-    def validate_username(self, value):
-        if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError("A user with this username already exists.")
-        return value
-
-    def validate(self, attrs):
-        """
-        Run the project's configured password policy.
-
-        `min_length=8` used to stand in for a policy and only measured length,
-        so "12345678" passed -- numeric and common, both of which
-        AUTH_PASSWORD_VALIDATORS was already configured to reject and never
-        got the chance to. Delegating to `validate_password` means the rule
-        lives in settings, in one place, for every path that creates a user.
-
-        The unsaved User carries username and email so the
-        similarity validator has something to compare against.
-        """
-        candidate = User(username=attrs.get("username", ""), email=attrs.get("email", ""))
-        try:
-            validate_password(attrs["password"], user=candidate)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError({"password": exc.messages}) from exc
-        return attrs
 
 
 class OrganizationMembershipUpdateSerializer(serializers.ModelSerializer):
