@@ -197,6 +197,17 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    # Scoped throttle for the password-reset request endpoint (see
+    # authentication.throttling.PasswordResetRequestThrottle): keyed on the
+    # *target* email address rather than the caller's IP, so it limits how
+    # often one mailbox can be flooded with reset emails regardless of how
+    # many different IPs the requests come from. It does not limit an
+    # attacker who spreads requests across many different target addresses
+    # from one IP, and it does not equalise response timing between a known
+    # and an unknown address.
+    'DEFAULT_THROTTLE_RATES': {
+        'password_reset_request': '3/hour',
+    },
 }
 
 # JWT Settings
@@ -214,7 +225,74 @@ SIMPLE_JWT = {
     'AUTH_COOKIE_SECURE': not DEBUG,
     'AUTH_COOKIE_HTTP_ONLY': True,
     'AUTH_COOKIE_SAMESITE': 'Lax',
+    # A password reset must invalidate existing sessions (spec: password
+    # reset). simplejwt's access/refresh tokens are stateless JWTs with no
+    # server-side revocation list by default -- adding one (the
+    # `token_blacklist` app) would only cover refresh tokens, and only for
+    # tokens rotated after enabling it, leaving already-issued access tokens
+    # (up to ACCESS_TOKEN_LIFETIME) valid regardless.
+    #
+    # CHECK_REVOKE_TOKEN is simplejwt's own built-in answer, and covers both
+    # token types with no extra infrastructure: every token minted via
+    # `Token.for_user()` embeds an MD5 digest of the user's *current* password
+    # hash as a claim, and `JWTAuthentication.get_user()` -- the method both
+    # `login`/`register`/`refresh` and every authenticated request already go
+    # through -- rejects the token the moment that digest stops matching. A
+    # password change (`set_password` + `save()`) is exactly such a moment,
+    # with no code in this app needing to know it happened. Refreshing an old
+    # refresh token still succeeds at the JWT layer (nothing here blacklists
+    # it), but the access token it mints carries the same now-stale digest
+    # forward, so it is rejected the same way everywhere it is actually used.
+    #
+    # One side effect worth flagging: this claim is only present on tokens
+    # minted after this setting is turned on, so every session that already
+    # exists at deploy time is signed out the moment this ships -- a one-time
+    # cost, not a per-reset one.
+    'CHECK_REVOKE_TOKEN': True,
 }
+
+# Email (optional): outgoing SMTP for password-reset messages (and any future
+# notification). A self-hosted instance must keep working with no mail server
+# configured at all -- exactly as it does today -- so every setting here is
+# optional and the absence of EMAIL_HOST, not a dedicated on/off flag, is what
+# decides whether SMTP is used.
+EMAIL_HOST = os.getenv('EMAIL_HOST') or None
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = env_flag('EMAIL_USE_TLS', True)
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'webmaster@localhost')
+
+# True only when a real mail server is configured -- this is the "operator
+# actually did the SMTP setup" signal, independent of which backend Django
+# ends up using below.
+EMAIL_CONFIGURED = bool(EMAIL_HOST)
+
+if EMAIL_CONFIGURED:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+elif DEBUG:
+    # No SMTP and DEBUG on: print the message to the terminal instead of
+    # sending it, so the whole password-reset flow is exercisable -- and its
+    # exact wording testable -- without ever standing up a mail server.
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+else:
+    # No SMTP and DEBUG off: this is a production instance nobody configured
+    # mail for. The console backend would still "work" by printing to stdout,
+    # but production stdout is routinely shipped to log aggregators, and a
+    # password-reset token is a bearer credential -- logging it anywhere it
+    # does not need to be is worse than not sending it at all. The dummy
+    # backend discards the message instead, silently and safely.
+    EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
+
+# Whether the password-reset flow is actually usable end to end -- exposed
+# through GET /api/v1/auth/config/ so the frontend knows whether to offer a
+# "forgot password" link before the visitor can even log in (see
+# authentication/views.py:auth_config). Real SMTP makes it usable regardless
+# of DEBUG; with no SMTP, DEBUG still makes it usable because the console
+# backend prints the message somewhere a developer is expected to be
+# looking, but a production instance with no SMTP swallows the message via
+# the dummy backend above, so the flow must be reported as unusable there.
+EMAIL_USABLE = EMAIL_CONFIGURED or DEBUG
 
 # UUID configuration
 DEFAULT_UUID_AUTO_FIELD = 'django.db.models.UUIDField'

@@ -1,21 +1,40 @@
 """
 Authentication API endpoints with httpOnly cookies.
 """
+import logging
+
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from authentication.emails import normalize_email, validate_normalized_email
+from authentication.emails import (
+    is_placeholder_email,
+    normalize_email,
+    send_password_reset_email,
+    validate_normalized_email,
+)
+from authentication.models import PasswordResetToken
+from authentication.throttling import PasswordResetRequestThrottle
 from tenancy.capabilities import resolve_capabilities
 from tenancy.models import OrganizationMembership
 from tenancy.permissions import IsDashboardUser
+
+logger = logging.getLogger(__name__)
+
+# Generic wording used regardless of whether the submitted address belongs to
+# an account -- see password_reset_request's docstring for why.
+PASSWORD_RESET_REQUESTED_MESSAGE = (
+    "If an account exists for that email, a password reset link has been sent."
+)
 
 
 def set_tokens_cookies(response, refresh_token, access_token):
@@ -318,3 +337,135 @@ def refresh_token(request):
             {"error": "Invalid refresh token"},
             status=status.HTTP_401_UNAUTHORIZED,
         )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def auth_config(request):
+    """
+    Public, pre-login configuration the frontend needs before a visitor can
+    even reach a login form -- specifically, whether "forgot password" should
+    be offered at all. Reachable without authentication because the person
+    who needs this answer cannot, by definition, be logged in yet: that is
+    exactly what they are trying to fix.
+    """
+    return Response({"password_reset_enabled": settings.EMAIL_USABLE}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([PasswordResetRequestThrottle])
+def password_reset_request(request):
+    """
+    Request a password reset link for an email address.
+
+    Always answers the same way whether or not an account exists for that
+    address (spec: password reset). Distinguishing the two would turn this
+    endpoint into an account-existence oracle -- anyone could submit
+    addresses one at a time and learn which ones have accounts, exactly the
+    reasoning behind InvitationPreviewView's single generic 404
+    (tenancy/api/views.py). Only the request's *shape* (missing or malformed
+    email) gets a distinct 400 -- that reveals nothing about who has an
+    account.
+
+    Self-service by construction, not by an added check: this endpoint takes
+    an email, never a user id or organization, so there is no way for an
+    organization admin -- or anyone else -- to trigger a reset for a member
+    other than themselves. A reset can only ever be requested against a
+    mailbox the requester actually controls.
+
+    POST body:
+    {
+        "email": "user@example.com"
+    }
+    """
+    email = request.data.get("email")
+    if not email:
+        return Response({"email": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    email = normalize_email(email)
+    try:
+        validate_normalized_email(email)
+    except DjangoValidationError:
+        return Response({"email": ["Enter a valid email address."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = User.objects.filter(email=email).first()
+    # A `@no-email.invalid` placeholder (authentication/migrations/
+    # 0001_email_required_unique.py) has no real mailbox behind it, so it is
+    # treated the same as "no account" -- there is nobody to send a token to,
+    # and issuing one nobody can ever retrieve would only be dead data.
+    if user is not None and not is_placeholder_email(user.email):
+        token, raw_token = PasswordResetToken.issue(user=user)
+        try:
+            send_password_reset_email(user, raw_token)
+        except Exception:
+            # A real SMTP failure (network, auth, misconfigured relay) must
+            # not surface here -- doing so would both leak that an account
+            # exists (an unknown address never reaches this code at all) and
+            # turn a mail-server hiccup into a request failure the caller
+            # cannot do anything about. It is logged for an operator instead.
+            logger.exception("Failed to send password reset email for user %s", user.pk)
+
+    return Response({"detail": PASSWORD_RESET_REQUESTED_MESSAGE}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def password_reset_confirm(request):
+    """
+    Consume a password-reset token and set a new password.
+
+    Follows the same state-checking shape as InvitationAcceptView
+    (tenancy/api/views.py): an unknown token is a 404, an already-used one is
+    a 409, an expired one is a 410 -- distinguishing these leaks nothing
+    about any *account*, only about the token the caller already holds (a
+    256-bit `secrets` value nobody could have guessed their way to).
+
+    POST body:
+    {
+        "token": "...",
+        "password": "..."
+    }
+    """
+    raw_token = request.data.get("token")
+    new_password = request.data.get("password")
+    if not raw_token or not new_password:
+        return Response(
+            {"error": "Token and password are required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    resolved = PasswordResetToken.for_token(raw_token)
+    if resolved is None:
+        return Response({"error": "token_not_found"}, status=status.HTTP_404_NOT_FOUND)
+
+    with transaction.atomic():
+        reset_token = PasswordResetToken.objects.select_for_update().select_related("user").get(
+            pk=resolved.pk
+        )
+
+        if reset_token.is_used:
+            return Response({"error": "token_already_used"}, status=status.HTTP_409_CONFLICT)
+        if reset_token.is_expired:
+            return Response({"error": "token_expired"}, status=status.HTTP_410_GONE)
+
+        user = reset_token.user
+        # AUTH_PASSWORD_VALIDATORS enforced the same way registration enforces
+        # it -- a reset must not be a back door around the policy every other
+        # path already applies.
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as exc:
+            return Response({"password": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        # Setting user.password above is also what invalidates existing
+        # sessions: SIMPLE_JWT['CHECK_REVOKE_TOKEN'] (config/settings.py)
+        # rejects any already-issued token the moment its embedded password
+        # digest stops matching -- no explicit action needed here.
+
+        reset_token.used_at = timezone.now()
+        reset_token.save(update_fields=["used_at"])
+
+    return Response({"detail": "Password has been reset."}, status=status.HTTP_200_OK)

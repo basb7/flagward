@@ -12,9 +12,16 @@ recipe for testing data migrations with pytest-django
 (`transaction=True` is required so the executor's own migration
 transactions are not nested inside pytest-django's per-test transaction).
 
-Every test restores the migration to its normal forward-applied state
-before returning control, since every other test in the suite assumes
-`authentication.0001_email_required_unique` is applied.
+Every test restores the migration state to fully forward-applied before
+returning control, since every other test in the suite assumes the whole
+`authentication` app (not just 0001) is migrated. That restore target is
+resolved dynamically (`_latest_authentication_migration`) rather than
+hardcoded to "0001_email_required_unique" as it once was: 0001 was the
+app's only migration at the time, but is no longer its leaf (see
+authentication/migrations/0002_password_reset_token.py) -- a hardcoded
+restore target here would silently leave later migrations unapplied for
+the rest of the test session the first time a new one is added, exactly as
+this one did until it was changed to look the leaf up instead.
 """
 import pytest
 from django.contrib.auth import get_user_model
@@ -36,6 +43,12 @@ def _migrate(target):
     MigrationExecutor(connection).migrate(target)
 
 
+def _latest_authentication_migration():
+    """Resolve the app's current leaf migration, whatever it is by now."""
+    executor = MigrationExecutor(connection)
+    return [node for node in executor.loader.graph.leaf_nodes() if node[0] == "authentication"]
+
+
 @pytest.mark.django_db(transaction=True)
 class TestBlankEmailIsBackfilled:
     def test_a_blank_email_gets_a_placeholder_on_the_invalid_tld(self):
@@ -49,7 +62,7 @@ class TestBlankEmailIsBackfilled:
             assert refreshed.email == f"user-{user.pk}@no-email.invalid"
             assert refreshed.email.endswith(".invalid")
         finally:
-            _migrate(MIGRATE_TO)
+            _migrate(_latest_authentication_migration())
 
 
 @pytest.mark.django_db(transaction=True)
@@ -80,5 +93,14 @@ class TestDuplicateEmailsRefuseToMigrate:
             )
             assert emails == {"Brian@Example.com", "brian@example.com"}
         finally:
-            User.objects.filter(username__in=["first", "second"]).delete()
-            _migrate(MIGRATE_TO)
+            # Raw SQL, not the ORM: migrating forward past 0001 again would
+            # hit this exact same duplicate-email conflict unless the two
+            # rows are gone first, so they must be deleted while
+            # "authentication" is still rolled back to nothing -- but
+            # PasswordResetToken has a CASCADE FK to User, and Django's
+            # deletion collector always considers its table regardless of
+            # migration state, which does not exist yet at this point. Raw
+            # SQL against auth_user sidesteps the collector entirely.
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM auth_user WHERE username IN ('first', 'second')")
+            _migrate(_latest_authentication_migration())
