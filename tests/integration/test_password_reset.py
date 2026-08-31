@@ -12,6 +12,7 @@ the submitted email, for the same reason InvitationPreviewView answers a
 single generic 404 (see tenancy/api/views.py): telling the two cases apart
 turns the endpoint into an account-existence oracle.
 """
+import re
 from datetime import timedelta
 
 import pytest
@@ -33,6 +34,13 @@ CONFIRM_URL = "/api/v1/auth/password-reset/confirm/"
 CONFIG_URL = "/api/v1/auth/config/"
 
 STRONG_PASSWORD = "tram-quartz-19-belt"
+
+
+def _raw_token_from_reset_email_body(body):
+    """Pull the raw token back out of a sent reset email's `/reset-password/<token>` link."""
+    match = re.search(r"/reset-password/(\S+)", body)
+    assert match, f"no reset-password link found in email body: {body!r}"
+    return match.group(1)
 
 
 @pytest.fixture(autouse=True)
@@ -70,6 +78,60 @@ class TestPasswordResetRequest:
 
         assert len(mail.outbox) == 1
         assert mail.outbox[0].to == ["dash@example.com"]
+
+    def test_the_email_carries_a_clickable_reset_link_built_from_the_frontend_setting(self, user, settings):
+        settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+        settings.FRONTEND_BASE_URL = "https://app.example.com"
+
+        APIClient().post(REQUEST_URL, {"email": "dash@example.com"}, format="json")
+
+        token = PasswordResetToken.objects.get(user=user)
+        body = mail.outbox[0].body
+        # The link must be built from the raw token, not the stored hash --
+        # the hash is what `for_token` looks up by, but it is not the bearer
+        # credential a person pastes into their browser.
+        assert token.token_hash not in body
+        raw_token = _raw_token_from_reset_email_body(body)
+        assert f"https://app.example.com/reset-password/{raw_token}" in body
+        confirm = APIClient().post(CONFIRM_URL, {"token": raw_token, "password": STRONG_PASSWORD}, format="json")
+        assert confirm.status_code == 200
+
+    def test_the_email_states_the_link_is_single_use_and_expires_in_one_hour(self, user, settings):
+        settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+        APIClient().post(REQUEST_URL, {"email": "dash@example.com"}, format="json")
+
+        body = mail.outbox[0].body
+        assert "one hour" in body
+        assert "once" in body
+
+    def test_the_email_still_reassures_an_unrequested_recipient_they_can_ignore_it(self, user, settings):
+        settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+        APIClient().post(REQUEST_URL, {"email": "dash@example.com"}, format="json")
+
+        assert "ignore this email" in mail.outbox[0].body
+
+    def test_a_trailing_slash_on_frontend_base_url_does_not_double_the_slash_in_the_link(self, user, settings):
+        settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+        settings.FRONTEND_BASE_URL = "https://app.example.com/"
+
+        APIClient().post(REQUEST_URL, {"email": "dash@example.com"}, format="json")
+
+        body = mail.outbox[0].body
+        assert "app.example.com//" not in body
+        raw_token = _raw_token_from_reset_email_body(body)
+        assert f"https://app.example.com/reset-password/{raw_token}" in body
+
+    def test_a_malformed_frontend_base_url_still_sends_a_usable_non_crashing_message(self, user, settings):
+        settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+        settings.FRONTEND_BASE_URL = "not-a-url"
+
+        response = APIClient().post(REQUEST_URL, {"email": "dash@example.com"}, format="json")
+
+        assert response.status_code == 200
+        assert len(mail.outbox) == 1
+        assert "not-a-url/reset-password/" in mail.outbox[0].body
 
     def test_a_request_for_an_unknown_address_answers_identically_and_creates_nothing(self):
         real_response = APIClient().post(REQUEST_URL, {"email": "unknown@example.com"}, format="json")

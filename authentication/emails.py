@@ -11,6 +11,7 @@ view, that migration's backfill, and any future admin/management entry point
 always exactly what the unique index expects. A check that normalises and an
 index that does not is a race waiting to happen.
 """
+from django.conf import settings
 from django.core.mail import send_mail
 from django.core.validators import validate_email
 
@@ -37,16 +38,22 @@ def send_password_reset_email(user, raw_token):
     """
     Send the one and only place the plain reset token is ever emitted.
 
-    There is no frontend route yet to build a clickable link around (the UI
-    is step 4 of this change), so the message carries the raw token itself --
-    the same "hand back the plaintext once, here, and never persist it"
-    contract `tenancy.models.Invitation.issue` uses for invitation links.
+    The message carries a clickable link, `FRONTEND_BASE_URL +
+    "/reset-password/<token>"`, matching the frontend route at
+    frontend/src/app/reset-password/[token] -- the same "hand back the
+    plaintext once, here, and never persist it" contract
+    `tenancy.models.Invitation.issue` uses for invitation links.
     """
+    # `.rstrip("/")` here too, not just in config.settings.env_base_url: a
+    # value set directly on `settings` (tests, another override) may not have
+    # gone through that helper, and a doubled slash must not depend on it.
+    reset_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password/{raw_token}"
     send_mail(
         subject="Reset your Flagward password",
         message=(
             "A password reset was requested for this account.\n\n"
-            f"Reset token: {raw_token}\n\n"
+            f"Reset your password: {reset_url}\n\n"
+            "This link can be used once and expires in one hour.\n\n"
             "If you did not request this, you can safely ignore this email."
         ),
         from_email=None,  # falls back to settings.DEFAULT_FROM_EMAIL

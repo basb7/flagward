@@ -17,6 +17,7 @@ only create-time gate, since DRF's permission class has no object on
 An unnarrowed FK here would reopen exactly the root-level hole the tenancy
 change closed (F3), one level above it.
 """
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
@@ -381,6 +382,15 @@ class InvitationViewSet(
         # The one and only place the plain token is ever returned -- it is
         # never stored, and this response is never reachable again.
         data["token"] = raw_token
+        # A clickable link built the same way the password-reset email
+        # builds its own -- the admin used to get the bare token back and
+        # had to assemble `/invite/<token>` by hand, matching the frontend
+        # route at frontend/src/app/invite/[token].
+        # `.rstrip("/")` here too, not just in config.settings.env_base_url:
+        # a value set directly on `settings` (tests, another override) may
+        # not have gone through that helper, and a doubled slash must not
+        # depend on it.
+        data["link"] = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/invite/{raw_token}"
         return Response(data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])

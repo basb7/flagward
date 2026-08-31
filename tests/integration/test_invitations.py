@@ -87,6 +87,42 @@ class TestInvitationCreate:
         assert "token" in response.data and response.data["token"]
         assert Invitation.objects.filter(organization=organization).count() == 1
 
+    def test_the_response_also_carries_a_clickable_invitation_link(
+        self, api_client, user, grant, organization, settings
+    ):
+        """
+        The admin used to get the bare token back and had to build
+        `/invite/<token>` themselves -- same fix as the password-reset email,
+        applied to the API response this time.
+        """
+        settings.FRONTEND_BASE_URL = "https://app.example.com"
+        grant(user, org=organization, role=OrganizationRole.ADMIN)
+        client = api_client(user)
+
+        response = client.post(
+            "/api/v1/tenancy/invitations/",
+            {"organization": str(organization.id), "role": OrganizationRole.USER},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.data["link"] == f"https://app.example.com/invite/{response.data['token']}"
+
+    def test_a_trailing_slash_on_frontend_base_url_does_not_double_the_slash_in_the_link(
+        self, api_client, user, grant, organization, settings
+    ):
+        settings.FRONTEND_BASE_URL = "https://app.example.com/"
+        grant(user, org=organization, role=OrganizationRole.ADMIN)
+        client = api_client(user)
+
+        response = client.post(
+            "/api/v1/tenancy/invitations/",
+            {"organization": str(organization.id), "role": OrganizationRole.USER},
+            format="json",
+        )
+
+        assert response.data["link"] == f"https://app.example.com/invite/{response.data['token']}"
+
     def test_non_privileged_cannot_create_invitation(self, api_client, user, grant, organization):
         grant(user, org=organization, role=OrganizationRole.USER)
         client = api_client(user)

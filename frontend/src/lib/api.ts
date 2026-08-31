@@ -778,9 +778,13 @@ export interface Invitation {
 /**
  * Only the create response carries this -- the plaintext token is never in
  * any read serializer, so if the caller loses it here, it's gone for good.
+ * `link` is the same token already assembled into a clickable
+ * `/invite/<token>` URL server-side (built from `FRONTEND_BASE_URL`), so
+ * callers don't need to reconstruct it from `window.location.origin`.
  */
 export interface InvitationWithToken extends Invitation {
   token: string;
+  link: string;
 }
 
 export interface InvitationPreview {

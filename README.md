@@ -196,6 +196,7 @@ cp .env.example .env
 | `ALLOWED_HOSTS` | Allowed domains | `localhost,127.0.0.1` |
 | `CORS_ALLOWED_ORIGINS` | CORS origins | `http://localhost:3000` |
 | `CSRF_TRUSTED_ORIGINS` | CSRF origins | `http://localhost:3000` |
+| `FRONTEND_BASE_URL` | Where the frontend lives; used to build the clickable links in the password-reset email and the invitation-create response (a trailing slash is stripped, so it never doubles up) | `http://localhost:3000` |
 | `EMAIL_HOST` | SMTP server host (optional -- see below) | unset |
 | `EMAIL_PORT` | SMTP server port | `587` |
 | `EMAIL_HOST_USER` | SMTP username | empty |
@@ -646,6 +647,7 @@ Copy `.env.example` to `.env` and configure:
 | `ALLOWED_HOSTS` | Allowed domains | `localhost,127.0.0.1` |
 | `CORS_ALLOWED_ORIGINS` | CORS origins | `http://localhost:3000` |
 | `CSRF_TRUSTED_ORIGINS` | CSRF origins | `http://localhost:3000` |
+| `FRONTEND_BASE_URL` | Where the frontend lives; used to build the clickable links in the password-reset email and the invitation-create response | `http://localhost:3000` |
 | `EMAIL_HOST` | SMTP server host (optional, powers password reset) | unset |
 | `EMAIL_PORT` | SMTP server port | `587` |
 | `EMAIL_HOST_USER` | SMTP username | empty |

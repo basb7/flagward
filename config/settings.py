@@ -16,6 +16,19 @@ def env_list(name, default):
     return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
 
 
+def env_base_url(name, default):
+    """
+    Read a base-URL setting from the environment, stripped of surrounding
+    whitespace and any trailing slash(es) -- so code that joins a path onto
+    it (e.g. `f"{FRONTEND_BASE_URL}/reset-password/{token}"`) never produces
+    a doubled slash just because an operator's `.env` happened to end the
+    value with one. No other validation happens here: same permissive stance
+    this file already takes with `EMAIL_HOST` and `CORS_ALLOWED_ORIGINS`,
+    neither of which is checked for being a well-formed URL either.
+    """
+    return os.getenv(name, default).strip().rstrip('/')
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -250,6 +263,31 @@ SIMPLE_JWT = {
     # cost, not a per-reset one.
     'CHECK_REVOKE_TOKEN': True,
 }
+
+# Where the frontend lives, for link-bearing outgoing messages: the
+# password-reset email builds `FRONTEND_BASE_URL + "/reset-password/<token>"`
+# (authentication/emails.py) and the invitation-create response builds
+# `FRONTEND_BASE_URL + "/invite/<token>"` (tenancy/api/views.py), matching the
+# frontend routes at frontend/src/app/reset-password/[token] and
+# frontend/src/app/invite/[token].
+#
+# This is deliberately its own setting, not derived from CORS_ALLOWED_ORIGINS
+# below: that list names every origin *permitted* to call the API, not which
+# one is *the* frontend, and picking e.g. its first entry would silently
+# break the day someone reorders that list.
+#
+# The default points at the frontend's own local dev address (Next.js's
+# default port -- see NEXT_PUBLIC_API_URL's backend-facing counterpart,
+# documented in README.md, which points the other way). That default is
+# never `None`, on purpose: a link built from `None` would read as
+# "None/reset-password/<token>" in a real email, which is worse than the
+# bare token this setting replaces. Instead, an unconfigured production
+# instance gets a link that is honestly, visibly wrong (it points at
+# localhost) rather than silently broken -- the same "obvious placeholder,
+# not a silent trap" stance SECRET_KEY's own default takes above: a
+# self-hosted instance must set this explicitly for real deployments, same
+# as it must set SECRET_KEY.
+FRONTEND_BASE_URL = env_base_url('FRONTEND_BASE_URL', 'http://localhost:3000')
 
 # Email (optional): outgoing SMTP for password-reset messages (and any future
 # notification). A self-hosted instance must keep working with no mail server
