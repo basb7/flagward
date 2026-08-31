@@ -36,7 +36,7 @@ class TestProjectMembershipUpdate:
     def test_project_admin_changes_a_role(self, api_client, user, grant, organization, project):
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         membership = grant(target, project=project, role=ProjectRole.VIEWER)
         client = api_client(user)
@@ -61,7 +61,7 @@ class TestProjectMembershipUpdate:
         """
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         grant(target, project=project, role=ProjectRole.VIEWER)
         client = api_client(user)
@@ -80,7 +80,7 @@ class TestProjectMembershipUpdate:
     ):
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         membership = grant(target, project=project, role=ProjectRole.VIEWER)
         client = api_client(user)
@@ -99,7 +99,9 @@ class TestProjectMembershipUpdate:
         """A grant in a project the caller cannot administer must not be reachable."""
         foreign_project = make_project(name="Foreign", key="foreign")
         foreign_org = foreign_project.organization
-        foreign_admin = User.objects.create_user(username="foreign-admin", password="tram-quartz-19-belt")
+        foreign_admin = User.objects.create_user(
+            username="foreign-admin", email="foreign-admin@example.com", password="tram-quartz-19-belt"
+        )
         grant(foreign_admin, org=foreign_org, role=OrganizationRole.ADMIN)
         membership = ProjectMembership.objects.create(
             project=foreign_project, user=foreign_admin, role=ProjectRole.VIEWER
@@ -119,7 +121,7 @@ class TestProjectMembershipUpdate:
     def test_project_admin_revokes_a_grant(self, api_client, user, grant, organization, project):
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         membership = grant(target, project=project, role=ProjectRole.VIEWER)
         client = api_client(user)
@@ -134,7 +136,7 @@ class TestProjectMembershipUpdate:
     ):
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         membership = grant(target, project=project, role=ProjectRole.VIEWER)
         client = api_client(user)
@@ -147,7 +149,9 @@ class TestProjectMembershipUpdate:
     def test_destroy_rejected_across_tenants(self, api_client, user, grant, make_project):
         foreign_project = make_project(name="Foreign", key="foreign")
         foreign_org = foreign_project.organization
-        foreign_admin = User.objects.create_user(username="foreign-admin", password="tram-quartz-19-belt")
+        foreign_admin = User.objects.create_user(
+            username="foreign-admin", email="foreign-admin@example.com", password="tram-quartz-19-belt"
+        )
         grant(foreign_admin, org=foreign_org, role=OrganizationRole.ADMIN)
         membership = ProjectMembership.objects.create(
             project=foreign_project, user=foreign_admin, role=ProjectRole.VIEWER
@@ -169,7 +173,7 @@ class TestEnvironmentMembershipUpdate:
     ):
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         membership = grant(target, environment=environment, role=EnvironmentRole.VIEWER)
         client = api_client(user)
@@ -189,7 +193,7 @@ class TestEnvironmentMembershipUpdate:
     ):
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         membership = grant(target, environment=environment, role=EnvironmentRole.VIEWER)
         client = api_client(user)
@@ -210,7 +214,9 @@ class TestEnvironmentMembershipUpdate:
         foreign_project = make_project(name="Foreign", key="foreign")
         foreign_org = foreign_project.organization
         foreign_environment = make_environment(project=foreign_project, key="stage", name="Staging")
-        foreign_admin = User.objects.create_user(username="foreign-admin", password="tram-quartz-19-belt")
+        foreign_admin = User.objects.create_user(
+            username="foreign-admin", email="foreign-admin@example.com", password="tram-quartz-19-belt"
+        )
         grant(foreign_admin, org=foreign_org, role=OrganizationRole.ADMIN)
         membership = EnvironmentMembership.objects.create(
             environment=foreign_environment, user=foreign_admin, role=EnvironmentRole.VIEWER
@@ -232,7 +238,7 @@ class TestEnvironmentMembershipUpdate:
     ):
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         membership = grant(target, environment=environment, role=EnvironmentRole.VIEWER)
         client = api_client(user)
@@ -247,7 +253,7 @@ class TestEnvironmentMembershipUpdate:
     ):
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
-        target = User.objects.create_user(username="target", password="tram-quartz-19-belt")
+        target = User.objects.create_user(username="target", email="target@example.com", password="tram-quartz-19-belt")
         grant(target, org=organization, role=OrganizationRole.USER)
         membership = grant(target, environment=environment, role=EnvironmentRole.VIEWER)
         client = api_client(user)
@@ -263,7 +269,9 @@ class TestEnvironmentMembershipUpdate:
         foreign_project = make_project(name="Foreign", key="foreign")
         foreign_org = foreign_project.organization
         foreign_environment = make_environment(project=foreign_project, key="stage", name="Staging")
-        foreign_admin = User.objects.create_user(username="foreign-admin", password="tram-quartz-19-belt")
+        foreign_admin = User.objects.create_user(
+            username="foreign-admin", email="foreign-admin@example.com", password="tram-quartz-19-belt"
+        )
         grant(foreign_admin, org=foreign_org, role=OrganizationRole.ADMIN)
         membership = EnvironmentMembership.objects.create(
             environment=foreign_environment, user=foreign_admin, role=EnvironmentRole.VIEWER

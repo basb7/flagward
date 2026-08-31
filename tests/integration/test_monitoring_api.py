@@ -18,7 +18,7 @@ from tenancy.models import OrganizationRole, ProjectRole
 def client(project, grant):
     """Authenticated API client, holding project ADMIN on `project`."""
     api_client = APIClient()
-    user = get_user_model().objects.create_user(username="dash", password="secret")
+    user = get_user_model().objects.create_user(username="dash", email="dash@example.com", password="secret")
     grant(user, org=project.organization, role=OrganizationRole.USER)
     grant(user, project=project, role=ProjectRole.ADMIN)
     api_client.force_authenticate(user=user)

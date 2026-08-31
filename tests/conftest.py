@@ -84,7 +84,9 @@ def flag(environment):
 
 @pytest.fixture
 def user():
-    return get_user_model().objects.create_user(username="dash", password="secret")
+    return get_user_model().objects.create_user(
+        username="dash", email="dash@example.com", password="secret"
+    )
 
 
 @pytest.fixture

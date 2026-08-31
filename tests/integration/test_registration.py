@@ -86,3 +86,72 @@ class TestPasswordPolicyIsEnforced:
 
         assert response.status_code == 201
         assert User.objects.filter(username="newcomer").exists()
+
+
+@pytest.mark.django_db
+class TestEmailIsARequiredUniqueIdentity:
+    """
+    Email is step 1 of password reset: a reset proves control of a channel
+    the account owns, so every account must have exactly one email, and no
+    two accounts may share it. See
+    authentication/migrations/0001_email_required_unique.py for the database
+    side of this and authentication/emails.py for the normalisation both the
+    view and the migration agree on.
+    """
+
+    def _register(self, **overrides):
+        payload = {"username": "newcomer", "email": "n@example.com", "password": "tram-quartz-19-belt"}
+        payload.update(overrides)
+        return APIClient().post("/api/v1/auth/register/", payload, format="json")
+
+    def test_registering_without_an_email_is_rejected(self):
+        response = self._register(email="")
+
+        assert response.status_code == 400
+        assert not User.objects.filter(username="newcomer").exists()
+
+    def test_registering_with_no_email_field_at_all_is_rejected(self):
+        response = APIClient().post(
+            "/api/v1/auth/register/",
+            {"username": "newcomer", "password": "tram-quartz-19-belt"},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not User.objects.filter(username="newcomer").exists()
+
+    def test_registering_with_a_malformed_email_is_rejected(self):
+        response = self._register(email="not-an-email")
+
+        assert response.status_code == 400
+        assert not User.objects.filter(username="newcomer").exists()
+
+    def test_registering_with_an_email_already_taken_is_rejected_with_a_clean_400(self):
+        first = self._register(username="first", email="taken@example.com")
+        assert first.status_code == 201
+
+        second = self._register(username="second", email="taken@example.com")
+
+        assert second.status_code == 400
+        assert not User.objects.filter(username="second").exists()
+
+    def test_email_uniqueness_is_case_insensitive(self):
+        """
+        `Brian@example.com` and `brian@example.com` are the same mailbox to a
+        human. Treating them as different accounts is how someone ends up
+        with two accounts and no way to tell which one is theirs.
+        """
+        first = self._register(username="first", email="Brian@Example.com")
+        assert first.status_code == 201
+
+        second = self._register(username="second", email="brian@example.com")
+
+        assert second.status_code == 400
+        assert not User.objects.filter(username="second").exists()
+
+    def test_stored_email_is_normalised_to_lowercase(self):
+        response = self._register(username="mixedcase", email="MixedCase@Example.COM")
+
+        assert response.status_code == 201
+        user = User.objects.get(username="mixedcase")
+        assert user.email == "mixedcase@example.com"

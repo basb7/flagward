@@ -25,7 +25,7 @@ def client(project, grant):
     to this client without needing a per-environment grant.
     """
     api_client = APIClient()
-    user = get_user_model().objects.create_user(username="dash", password="secret")
+    user = get_user_model().objects.create_user(username="dash", email="dash@example.com", password="secret")
     grant(user, org=project.organization, role=OrganizationRole.USER)
     grant(user, project=project, role=ProjectRole.VIEWER)
     api_client.force_authenticate(user=user)

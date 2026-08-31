@@ -20,7 +20,7 @@ class TestRefreshEndpoint:
 
     def setup_method(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username='admin', password='secret')
+        self.user = User.objects.create_user(username='admin', email='admin@example.com', password='secret')
 
     def issue_tokens(self, issued_ago=timedelta(hours=1)):
         """
@@ -134,7 +134,7 @@ class TestDjangoSessionDoesNotHijackTheApi:
     def setup_method(self):
         # The test client disables CSRF checks unless asked to keep them.
         self.client = APIClient(enforce_csrf_checks=True)
-        self.user = User.objects.create_user(username='admin', password='secret')
+        self.user = User.objects.create_user(username='admin', email='admin@example.com', password='secret')
 
     def test_login_succeeds_while_a_django_session_is_active(self):
         """A session from the admin must not make the API demand a CSRF token."""

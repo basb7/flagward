@@ -52,7 +52,7 @@ class TestEffectiveCapabilitiesPreview:
         preview answers through `resolve_capabilities` and nothing else.
         """
         grant(user, org=organization, role=OrganizationRole.ADMIN)  # to call the preview
-        target_user = User.objects.create_user(username="target", password="secret")
+        target_user = User.objects.create_user(username="target", email="target@example.com", password="secret")
         grant(target_user, org=organization, role=OrganizationRole.USER)
         grant(target_user, project=project, role=ProjectRole.VIEWER)
         grant(target_user, environment=environment, role=EnvironmentRole.EDITOR)

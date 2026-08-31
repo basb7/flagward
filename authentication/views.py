@@ -12,6 +12,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from authentication.emails import normalize_email, validate_normalized_email
 from tenancy.capabilities import resolve_capabilities
 from tenancy.models import OrganizationMembership
 from tenancy.permissions import IsDashboardUser
@@ -125,9 +126,9 @@ def register(request):
     email = request.data.get("email")
     password = request.data.get("password")
 
-    if not username or not password:
+    if not username or not password or not email:
         return Response(
-            {"error": "Username and password are required"},
+            {"error": "Username, email, and password are required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -135,6 +136,26 @@ def register(request):
     if User.objects.filter(username=username).exists():
         return Response(
             {"error": "Username already exists"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Email is a required, unique identity (step 1 of password reset: a
+    # reset proves control of a channel the account owns). Normalise the
+    # same way authentication/migrations/0001_email_required_unique.py
+    # normalises existing rows, so this check and the database's unique
+    # index always agree on what "the same address" means.
+    email = normalize_email(email)
+    try:
+        validate_normalized_email(email)
+    except DjangoValidationError:
+        return Response(
+            {"email": ["Enter a valid email address."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if User.objects.filter(email=email).exists():
+        return Response(
+            {"email": ["Email already exists"]},
             status=status.HTTP_400_BAD_REQUEST,
         )
 

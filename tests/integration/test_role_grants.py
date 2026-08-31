@@ -25,7 +25,7 @@ class TestRoleGrants:
         """A project admin grants an EDITOR role on a project to a fellow org member."""
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
-        target = User.objects.create_user(username="target", password="secret")
+        target = User.objects.create_user(username="target", email="target@example.com", password="secret")
         grant(target, org=organization, role=OrganizationRole.USER)
         client = api_client(user)
 
@@ -44,7 +44,7 @@ class TestRoleGrants:
         """A project admin grants an OPERATOR role on an environment to a fellow org member."""
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.ADMIN)
-        target = User.objects.create_user(username="target", password="secret")
+        target = User.objects.create_user(username="target", email="target@example.com", password="secret")
         grant(target, org=organization, role=OrganizationRole.USER)
         grant(target, project=project, role=ProjectRole.VIEWER)
         client = api_client(user)
@@ -65,12 +65,12 @@ class TestRoleGrants:
         Granting a project or environment role to a user with no
         OrganizationMembership in the owning organization must be rejected.
         """
-        grant_admin = User.objects.create_user(username="admin", password="secret")
+        grant_admin = User.objects.create_user(username="admin", email="admin@example.com", password="secret")
         OrganizationMembership.objects.create(
             organization=project.organization, user=grant_admin, role=OrganizationRole.ADMIN
         )
         ProjectMembership.objects.create(project=project, user=grant_admin, role=ProjectRole.ADMIN)
-        stranger = User.objects.create_user(username="stranger", password="secret")
+        stranger = User.objects.create_user(username="stranger", email="stranger@example.com", password="secret")
         client = api_client(grant_admin)
 
         response = client.post(
@@ -91,7 +91,7 @@ class TestRoleGrants:
         """
         grant(user, org=organization, role=OrganizationRole.USER)
         grant(user, project=project, role=ProjectRole.VIEWER)
-        target = User.objects.create_user(username="target", password="secret")
+        target = User.objects.create_user(username="target", email="target@example.com", password="secret")
         grant(target, org=organization, role=OrganizationRole.USER)
         client = api_client(user)
 
