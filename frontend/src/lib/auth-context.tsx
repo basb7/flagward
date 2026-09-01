@@ -41,6 +41,16 @@ interface AuthContextType {
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /**
+   * Re-fetches `/auth/me/` and replaces `user` with what it answers now.
+   *
+   * `checkAuth` only runs on mount, so anything that changes which
+   * organizations the caller belongs to -- or what it can do in one --
+   * without a remount (creating an organization, joining one) leaves `user`
+   * stale. Call this right after such a mutation, before anything reads
+   * `hasOrgCapability` against the result.
+   */
+  refreshCapabilities: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -90,8 +100,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshCapabilities = useCallback(async () => {
+    try {
+      const userData = await authApi.me();
+      setUser(userData);
+    } catch {
+      // A transient failure here shouldn't sign anyone out -- checkAuth and
+      // the onSessionExpired listener already own that decision.
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, login, logout, refreshCapabilities }}
+    >
       {children}
     </AuthContext.Provider>
   );
