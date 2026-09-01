@@ -822,15 +822,30 @@ export default function MembersPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={!currentProject}
-                          onClick={() => openGrantDialog(member)}
-                        >
-                          <Plus className="mr-1 h-3.5 w-3.5" />
-                          Grant role
-                        </Button>
+                        {/*
+                         * Not offered for an organization ADMIN, who already
+                         * holds the whole capability catalogue. Under union
+                         * resolution a project or environment grant can only
+                         * add, so granting one here changes nothing -- while
+                         * implying it narrows them to that project, which is
+                         * the same lie this screen refuses to tell with a
+                         * checkbox grid (see the note at the top of the file).
+                         * The control that actually limits an ADMIN is the
+                         * organization role itself: demote them to USER.
+                         * Existing grant rows keep their edit and remove
+                         * actions; deleting a stale one is real cleanup.
+                         */}
+                        {member.role === 'ADMIN' ? null : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!currentProject}
+                            onClick={() => openGrantDialog(member)}
+                          >
+                            <Plus className="mr-1 h-3.5 w-3.5" />
+                            Grant role
+                          </Button>
+                        )}
                         {member.role === 'ADMIN' &&
                         orgAdminCount <= 1 ? null : (
                           <Button
