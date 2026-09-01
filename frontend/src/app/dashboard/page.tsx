@@ -13,6 +13,7 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { EvaluationsChart } from '@/components/charts/evaluations-chart';
+import { CreateEnvironmentDialog } from '@/components/dashboard/create-environment-dialog';
 import { CreateOrganizationDialog } from '@/components/dashboard/create-organization-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
 import { Badge } from '@/components/ui/badge';
@@ -72,7 +73,7 @@ export default function DashboardPage() {
   const [topFlags, setTopFlags] = useState<TopFlag[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
+  const loadEnvironments = useCallback(() => {
     environmentsApi
       .list({ project: currentProject?.id })
       .then((response) =>
@@ -89,6 +90,10 @@ export default function DashboardPage() {
       )
       .catch(() => setEnvironments([]));
   }, [currentProject]);
+
+  useEffect(() => {
+    loadEnvironments();
+  }, [loadEnvironments]);
 
   const loadAnalytics = useCallback(async () => {
     try {
@@ -361,6 +366,21 @@ export default function DashboardPage() {
               icon={Layers}
               title="No environments yet"
               description="Create one to get an API key and start serving flags."
+              action={
+                currentProject ? (
+                  <CreateEnvironmentDialog
+                    projectId={currentProject.id}
+                    triggerButton={<Button />}
+                    triggerContent={
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create environment
+                      </>
+                    }
+                    onCreated={loadEnvironments}
+                  />
+                ) : undefined
+              }
             />
           ) : (
             <ul className="flex flex-wrap gap-2">

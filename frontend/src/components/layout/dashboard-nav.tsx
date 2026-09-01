@@ -137,14 +137,17 @@ export function DashboardNav() {
               triggerButton={
                 <Button
                   variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground hover:text-foreground"
+                  size="sm"
+                  title="Create a new organization"
+                  className="gap-1.5 text-muted-foreground hover:text-foreground"
                 />
               }
               triggerContent={
                 <>
                   <Plus className="size-4" />
-                  <span className="sr-only">New organization</span>
+                  <span className="sr-only sm:not-sr-only">
+                    New organization
+                  </span>
                 </>
               }
               onCreated={async (organization) => {
@@ -248,14 +251,15 @@ export function DashboardNav() {
                 triggerButton={
                   <Button
                     variant="ghost"
-                    size="icon-sm"
-                    className="text-muted-foreground hover:text-foreground"
+                    size="sm"
+                    title="Create a new project"
+                    className="gap-1.5 text-muted-foreground hover:text-foreground"
                   />
                 }
                 triggerContent={
                   <>
                     <Plus className="size-4" />
-                    <span className="sr-only">New project</span>
+                    <span className="sr-only sm:not-sr-only">New project</span>
                   </>
                 }
                 onCreated={(project) => {

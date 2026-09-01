@@ -28,14 +28,21 @@ interface TenantContextType {
   setCurrentOrganization: (organization: Organization | null) => void;
   setCurrentProject: (project: Project | null) => void;
   isLoading: boolean;
-  /** Re-fetches organizations and projects, e.g. after creating one. */
+  /**
+   * Re-fetches organizations and projects, e.g. after creating, renaming or
+   * deleting one -- and, alongside that, `/auth/me/`'s per-organization
+   * capabilities. The two only ever change together (a new organization or
+   * membership is also a new capability set), so one `refresh` keeps both in
+   * sync instead of leaving call sites to remember which mutation needs which
+   * fetch.
+   */
   refresh: () => Promise<void>;
 }
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, refreshCapabilities } = useAuth();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<
@@ -102,6 +109,15 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     load();
   }, [user, load]);
+
+  // The public `refresh` (see the interface doc above): re-runs `load` and
+  // `refreshCapabilities` together. Deliberately not folded into the
+  // mount/user-change effect above -- `refreshCapabilities` replaces `user`
+  // with a new object every call, and that effect depends on `user`, so
+  // calling it from inside would re-trigger the effect on every refresh.
+  const refresh = useCallback(async () => {
+    await Promise.all([load(), refreshCapabilities()]);
+  }, [load, refreshCapabilities]);
 
   const currentOrganization = useMemo(
     () =>
@@ -178,7 +194,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         setCurrentOrganization,
         setCurrentProject,
         isLoading,
-        refresh: load,
+        refresh,
       }}
     >
       {children}
