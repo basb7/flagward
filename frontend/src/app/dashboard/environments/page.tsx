@@ -246,10 +246,21 @@ export default function EnvironmentsPage() {
                         <code className="text-xs bg-muted px-2 py-1 rounded text-foreground">
                           {env.api_key.slice(0, 16)}...
                         </code>
+                        {/*
+                          A bare icon has no accessible name at all, and this
+                          is one of several identical copy buttons -- so the
+                          name has to say *which* environment's key it copies.
+                          It deliberately does not change when the icon flips
+                          to the tick: the button still does the same thing,
+                          and the success toast (which sonner renders in a
+                          live region) is what announces that the copy
+                          happened.
+                        */}
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => copyApiKey(env.api_key, env.id)}
+                          aria-label={`Copy API key for ${env.name}`}
                           className="text-muted-foreground"
                         >
                           {copiedId === env.id ? (
@@ -266,6 +277,7 @@ export default function EnvironmentsPage() {
                           variant="ghost"
                           size="icon"
                           onClick={() => deleteEnvironment(env.id)}
+                          aria-label={`Delete environment ${env.name}`}
                           className="text-muted-foreground hover:text-destructive hover:bg-muted"
                         >
                           <Trash2 className="h-4 w-4" />

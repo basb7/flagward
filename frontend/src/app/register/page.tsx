@@ -68,7 +68,10 @@ function RegisterForm() {
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4 pb-6">
             {error && (
-              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
+              <div
+                role="alert"
+                className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md"
+              >
                 {error}
               </div>
             )}
