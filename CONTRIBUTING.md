@@ -14,6 +14,7 @@ By participating in this project you agree to abide by our
 - [Ways to contribute](#ways-to-contribute)
 - [Development setup](#development-setup)
 - [Project layout](#project-layout)
+- [Tenancy invariants](#tenancy-invariants)
 - [Test validation](#test-validation)
 - [Linting and formatting](#linting-and-formatting)
 - [Commit conventions](#commit-conventions)
@@ -99,6 +100,7 @@ and `DEBUG` must be `False` outside of local development.
 | `config/` | Django project settings, URLs, ASGI/WSGI entrypoints |
 | `core/` | Shared utilities and management commands |
 | `core_flags/` | Feature flag domain: models, evaluation, overrides |
+| `tenancy/` | Tenancy and permissions: organizations, projects, memberships, roles, capabilities, queryset scoping |
 | `sdk_api/` | Public SDK endpoints, authentication, SSE streaming |
 | `analytics/` | Evaluation metrics and reporting |
 | `authentication/` | JWT cookie authentication |
@@ -106,6 +108,50 @@ and `DEBUG` must be `False` outside of local development.
 | `tests/unit/` | Fast tests with no I/O |
 | `tests/integration/` | API-level tests through the Django test client |
 | `openspec/` | Specification and design artifacts |
+
+---
+
+## Tenancy invariants
+
+Flagward is multi-tenant. Everything a dashboard request can reach hangs off
+one chain:
+
+```
+Organization → Project → Environment → FeatureFlag → StrategyRule → Condition
+```
+
+The four rules below hold that chain together. They are the ones a change
+breaks without meaning to, so each is written with its reason — a rule without
+its reason gets tidied away by the next person. Read them before you touch
+`tenancy/`, a viewset, or a serializer.
+
+- **No `is_superuser` bypass in the permission layer.** Nothing in
+  `tenancy/permissions.py` — or anywhere else on the DRF path — may consult
+  `is_superuser` or `is_staff`. The superadmin operates through `/admin/`; a
+  bypass in the API would make the tenant boundary conditional on a flag on a
+  user row. The guarantee rests on the *absence* of a line, which no reviewer
+  can be relied on to keep noticing, so
+  `tests/integration/test_tenant_scoping.py::TestNoSuperuserBypass` fails the
+  moment one comes back.
+- **A resource in another tenant is a 404, never a 403.** Scoping happens in
+  `get_queryset()` — `TenantScopedViewSetMixin` for everything at or below
+  `Environment`, `orgs_with`/`projects_with` for the two viewsets above it — so
+  an invisible object is simply not there. A 403 would confirm the UUID exists.
+  403 is reserved for visible-but-unprivileged, and 400 for a write aimed at a
+  parent object in another tenant; do not collapse the three.
+- **The capability catalogue lives in code, not in a table.**
+  `tenancy/capabilities.py` holds every capability string and every
+  role → capability grant as frozen module constants, and `resolve_capabilities`
+  is a pure function over them — no database, no request, no user object. There
+  is nothing to migrate, so permissions version with the code and cannot drift
+  between environments. Adding or changing a capability is a code change plus a
+  test, never a data fix.
+- **Scoping queries stay join-free.** Every branch in `tenancy/scoping.py` is a
+  scalar `IN` subquery over the model's own column; no membership table is ever
+  traversed as a join in the outer query. Nothing fans out, which is why
+  `.distinct()` is needed nowhere. The invariant is asserted structurally by the
+  `assert_membership_never_joined` fixture in `tests/conftest.py`, not by
+  grepping for `.distinct(` — a new scoping branch has to pass it.
 
 ---
 
@@ -163,8 +209,14 @@ reduce it. New behaviour needs new tests.
 ```bash
 cd frontend
 npm run lint        # biome check .
+npm test            # node --test 'src/**/*.test.ts'
 npm run build       # production build must succeed
 ```
+
+CI runs all three, in that order. `npm test` is Node's built-in `node:test`
+runner over the TypeScript sources directly — Node strips the types, so there
+is no transpiler step and no test dependency in `package.json`. Put a test
+beside the module it covers, named `<module>.test.ts`.
 
 ---
 
@@ -234,7 +286,7 @@ Branch names follow the same shape: `feat/percentage-rollout`,
 
    ```bash
    ruff check . && pytest
-   cd frontend && npm run lint && npm run build
+   cd frontend && npm run lint && npm test && npm run build
    ```
 
 4. Push and open a pull request against `main`.
@@ -251,7 +303,7 @@ Branch names follow the same shape: `feat/percentage-rollout`,
 - [ ] Tests added or updated for the change
 - [ ] `pytest` passes locally
 - [ ] `ruff check .` passes
-- [ ] `npm run lint` and `npm run build` pass, if the frontend changed
+- [ ] `npm run lint`, `npm test` and `npm run build` pass, if the frontend changed
 - [ ] Documentation updated, if behaviour changed
 - [ ] Commits follow Conventional Commits
 
