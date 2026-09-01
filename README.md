@@ -29,6 +29,7 @@ client in real time over SSE.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Backend (Django)                                           │
+│  ├── tenancy/       # Organizations, projects, roles        │
 │  ├── core_flags/    # Flag models + evaluation engine       │
 │  ├── sdk_api/       # SDK surface + monitoring read API     │
 │  ├── analytics/     # Aggregation endpoints (no models)     │
@@ -39,7 +40,8 @@ client in real time over SSE.
 │  ├── Overview       # Live counters + evaluation volume     │
 │  ├── Flags          # Toggle, target, override              │
 │  ├── Environments   # API keys                              │
-│  └── Monitoring     # SDKs, evaluation log, override trail   │
+│  ├── Monitoring     # SDKs, evaluation log, override trail  │
+│  └── Members        # Roles, grants, invitations            │
 ├─────────────────────────────────────────────────────────────┤
 │  SDK (Client Libraries)                                     │
 │  ├── Download flag rules once                               │
@@ -276,30 +278,73 @@ docker compose -f compose.dev.yml exec backend python manage.py migrate
 
 In production, use the web dashboard at http://localhost:3000:
 
-1. **Login** with your superuser credentials
-2. **Create Environment**: Go to Environments → New Environment
+1. **Register** at http://localhost:3000/register — username, email, password.
+
+   Not your superuser. The superuser administers the *deployment*, through
+   Django admin; it holds no membership anywhere, so the dashboard API shows
+   it nothing at all, not even a list of organizations it does not belong to.
+   The dashboard is for ordinary accounts, and anyone can register one.
+   Whoever registers becomes the `ADMIN` of the organizations they create.
+2. **Create your organization**: the dashboard asks for one the moment you
+   arrive with none, and the nav keeps a "New organization" button for later
+   - Name: Acme
+   - Creating it makes you its `ADMIN`, in the same transaction
+3. **Create a project**: nav → New project
+   - Name: Checkout
+   - No key to invent — the server derives `checkout` from the name
+   - The nav's organization and project selectors decide which project every
+     other screen is showing
+4. **Create Environment**: Go to Environments → New Environment
    - Name: Production
-   - Key: prod
-   - Save → API key is auto-generated
-3. **Create Feature Flag**: Go to Flags → New Flag
+   - Save → key derived (`production`), and the API key is auto-generated
+     and copyable from the table
+5. **Create Feature Flag**: Go to Flags → New Flag
    - Select environment: Production
    - Key: new-dashboard
    - Name: New Dashboard
-   - Type: BOOLEAN
-4. **Turn it on**: flip the switch in the Status column
-5. **Add Rules** (optional): row menu → Rules → New Rule
+6. **Turn it on**: flip the switch in the Status column
+7. **Add Rules** (optional): row menu → Rules → New Rule
    - Priority: 1
    - Operator Logic: AND
-6. **Add Conditions** (optional): Click on the rule → Condition
+8. **Add Conditions** (optional): Click on the rule → Condition
    - Attribute: country
    - Operator: Equals
    - Value: US
-7. **Watch it work**: Monitoring shows which SDKs are connected
+9. **Watch it work**: Monitoring shows which SDKs are connected
 
    It will not show evaluations from a client evaluating locally, which is
    what the React SDK does -- those never reach the server. Only calls to
    `POST /api/v1/sdk/evaluate/` are recorded. See
    [Consuming flags from your app](#consuming-flags-from-your-app).
+
+### Inviting someone into your organization
+
+Go to **Members → Invite by link**, pick the organization role, and you get a
+single-use link back exactly once — the server stores only its hash, so a
+database dump yields no working invitation. Whoever opens the link joins with
+the role baked into it, and the link is spent.
+
+An organization role is deliberately almost nothing. `ADMIN` is the full key to
+the account: every capability at every level, including deleting the
+organization with every project, environment and flag under it. `USER`, the
+only other one, grants exactly `org.view`.
+
+So a plain `USER` with no project or environment grant sees the organization's
+name and **nothing else**. Projects, environments and flags all come back
+empty, and fetching one by its UUID answers `404`, not `403` — a row you cannot
+see must not even confirm that it exists.
+
+Access is widened from there, on **Members → Grant role**: a project role
+covers everything in that project, an environment role covers one environment,
+and both use the same four names (`ADMIN`, `EDITOR`, `OPERATOR`, `VIEWER`).
+Grants only ever add. There is no carve-out — you cannot give someone a whole
+project and then take one environment back, and no lower grant narrows a higher
+one. Before saving, the dialog previews the exact capabilities the proposed
+role would produce, computed by the same function that enforces them, so the
+preview cannot drift from the answer.
+
+Removing someone's organization membership also removes every project and
+environment grant they held inside it.
 
 ### Killing a flag during an incident
 
@@ -326,18 +371,53 @@ For development and debugging, you can also use the Django admin at http://local
 
 > **Note**: The Django admin is useful for development and debugging, but the frontend dashboard is the primary interface for managing feature flags in production.
 
+The superuser's reach ends here. Nothing in the dashboard API consults
+`is_superuser`: access comes from memberships only, so a superuser holding none
+sees no organization, no project and no flag through `/api/v1/`, and gets the
+same `404` on a foreign row as anyone else. To use the dashboard, register an
+account like everybody else.
+
 ### Creation Order
 
 ```
-1. ENVIRONMENT (first)          # carries the API key SDKs authenticate with
-   └── 2. FEATURE FLAG          # is_enabled = the configured state
-         └── 3. STRATEGY RULES (optional)   # who gets it
-               └── 4. CONDITIONS (optional) # attribute + operator + value
+1. ORGANIZATION (first)         # you create it, and become its ADMIN
+   └── 2. PROJECT               # key derived from the name
+         └── 3. ENVIRONMENT     # key derived too; carries the API key
+                                # SDKs authenticate with
+               └── 4. FEATURE FLAG          # is_enabled = the configured state
+                     └── 5. STRATEGY RULES (optional)   # who gets it
+                           └── 6. CONDITIONS (optional) # attribute + operator + value
 
    FLAG OVERRIDE                # not part of setup: an incident tool.
-                                # Forces the value, bypasses 3 and 4,
+                                # Forces the value, bypasses 5 and 6,
                                 # and is lifted when the incident ends.
 ```
+
+### Which keys you type, and which are derived
+
+| Key | Who writes it |
+|---|---|
+| `Project.key` | Derived from the name when the project is created |
+| `Environment.key` | Derived from the name when the environment is created |
+| `FeatureFlag.key` | You do — it is the string your code passes to `useFlag('...')` |
+
+A derived key is a slug of the name, unique among its siblings: a project key
+within its organization, an environment key within its project. A name that
+slugifies to nothing becomes `untitled`, and a taken slug gets `-2`, `-3`, and
+so on. Nobody is asked to invent these two because nothing resolves them — no
+URL, filter or SDK path reads either one, every row is addressed by UUID and
+the SDK authenticates with the environment's `api_key`.
+
+A derived key is never re-derived afterwards: rename an environment and its key
+stays exactly as first derived. Both remain writable through `PATCH`, but only
+a project's is editable from the dashboard (nav → rename, which offers name and
+key). An environment can be created and deleted from the dashboard and nothing
+else — if you need a different one, delete it and create it again, remembering
+that its API key goes with it.
+
+A flag's key is the exception and stays yours: deriving it would rename the
+`useFlag('...')` calls in your code. It is fixed once created — the edit dialog
+locks it.
 
 ## Consuming flags from your app
 
@@ -401,6 +481,13 @@ flagward/
 ├── core/                # Shared building blocks
 │   ├── api/mixins.py    # QueryParamFilterMixin (query-param filtering)
 │   └── management/commands/create_super_user.py
+├── tenancy/             # Organizations, projects, roles and access control
+│   ├── models.py        # Organization, Project, the three membership tables, Invitation
+│   ├── capabilities.py  # The frozen capability catalogue and role → capability grants
+│   ├── scoping.py       # Join-free "what can this user see" querysets
+│   ├── permissions.py   # DRF permission classes + the tenant-scoped viewset mixin
+│   ├── slugs.py         # Deriving Project.key / Environment.key from a name
+│   └── api/             # Organization, project, membership and invitation endpoints
 ├── core_flags/          # Core flag models and evaluation engine
 │   ├── models.py        # Environment, FeatureFlag, StrategyRule, Condition, FlagOverride
 │   ├── services.py      # FlagEvaluationService (override → is_enabled → rules)
@@ -419,7 +506,7 @@ flagward/
 │   ├── unit/            # Models, evaluation service, override precedence
 │   └── integration/     # API endpoints, analytics, SDK payload
 ├── frontend/            # Next.js dashboard
-│   ├── src/app/dashboard/  # Overview, flags, environments, monitoring
+│   ├── src/app/dashboard/  # Overview, flags, environments, monitoring, members
 │   ├── src/components/ui/  # Design-token primitives (Badge, Switch, StatCard…)
 │   ├── src/components/charts/ # Evaluation volume chart
 │   ├── src/lib/api.ts   # Typed API client
@@ -434,8 +521,13 @@ flagward/
 
 ## API Endpoints
 
-All dashboard endpoints require an authenticated session or JWT cookie.
+All dashboard endpoints require the JWT cookie — a Django admin session is not
+an API credential, and an SDK API key is refused here with a `403`.
 Every list endpoint is paginated (`PAGE_SIZE = 20`).
+
+Every read is scoped to what the caller's memberships reach, so a row in
+another tenant is `404` rather than `403`: an id you cannot see must not
+answer differently from one that does not exist.
 
 ### Auth
 
@@ -447,15 +539,51 @@ Tokens travel in httpOnly cookies, so the browser never handles them directly.
 | `POST` | `/api/v1/auth/login/` | Sets the auth cookies |
 | `POST` | `/api/v1/auth/logout/` | Clears them |
 | `POST` | `/api/v1/auth/refresh/` | Rotates the access token |
-| `GET` | `/api/v1/auth/me/` | Current user |
+| `GET` | `/api/v1/auth/me/` | Current user, with its capabilities per organization |
 | `GET` | `/api/v1/health/` | Liveness probe, no auth required |
+
+Registration creates the user and nothing else — no organization is
+provisioned for it (`authentication/views.py`). The first organization is
+created explicitly, from the dashboard's empty state.
+
+### Tenancy (organizations, projects, members)
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` `POST` | `/api/v1/tenancy/organizations/` | Organizations; creating one makes you its `ADMIN` |
+| `GET` `PATCH` `DELETE` | `/api/v1/tenancy/organizations/{id}/` | One organization |
+| `GET` | `/api/v1/tenancy/organizations/{id}/deletion_impact/` | What a delete would remove, counted |
+| `GET` `POST` | `/api/v1/tenancy/projects/` | Projects (`key` derived from `name`) |
+| `GET` `PATCH` `DELETE` | `/api/v1/tenancy/projects/{id}/` | One project |
+| `GET` | `/api/v1/tenancy/projects/{id}/deletion_impact/` | Same shape, one level down |
+| `GET` | `/api/v1/tenancy/organization-memberships/` | Who else is in the organizations you can see |
+| `PATCH` `DELETE` | `/api/v1/tenancy/organization-memberships/{id}/` | Change or revoke an organization role |
+| `GET` `POST` | `/api/v1/tenancy/project-memberships/` | Per-project role grants |
+| `PATCH` `DELETE` | `/api/v1/tenancy/project-memberships/{id}/` | Change or revoke one |
+| `GET` `POST` | `/api/v1/tenancy/environment-memberships/` | Per-environment role grants |
+| `PATCH` `DELETE` | `/api/v1/tenancy/environment-memberships/{id}/` | Change or revoke one |
+| `GET` `POST` | `/api/v1/tenancy/invitations/` | Single-use invitation links |
+| `POST` | `/api/v1/tenancy/invitations/{id}/revoke/` | Revoke one nobody has used |
+| `GET` | `/api/v1/tenancy/invitations/{token}/preview/` | What you were invited to; no auth required |
+| `POST` | `/api/v1/tenancy/invitations/{token}/accept/` | Join, with the role baked into the link |
+| `POST` | `/api/v1/tenancy/effective-capabilities/preview/` | What proposed roles *would* grant; saves nothing |
+
+`DELETE` on an organization or a project asks for `confirm_name`: the object's
+exact current name, echoed back. An organization with other members is refused
+outright — remove them first.
+
+Organization membership rows are never created directly. An invitation link is
+the only way in for anyone but the organization's founding `ADMIN`, and
+removing an organization membership also revokes every project and environment
+grant that member held inside it.
 
 ### Flag management (core_flags)
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` `POST` | `/api/v1/environments/` | Environments (API key is auto-generated) |
+| `GET` `POST` | `/api/v1/environments/` | Environments (`key` derived from `name`, API key auto-generated) |
 | `GET` `PATCH` `DELETE` | `/api/v1/environments/{id}/` | One environment |
+| `POST` | `/api/v1/environments/{id}/rotate_api_key/` | Issue a fresh API key for it |
 | `GET` `POST` | `/api/v1/flags/` | Feature flags |
 | `GET` `PATCH` `DELETE` | `/api/v1/flags/{id}/` | One flag |
 | `GET` `POST` | `/api/v1/rules/` | Strategy rules |
@@ -463,8 +591,9 @@ Tokens travel in httpOnly cookies, so the browser never handles them directly.
 | `GET` `POST` | `/api/v1/conditions/` | Conditions |
 | `GET` `PATCH` `DELETE` | `/api/v1/conditions/{id}/` | One condition |
 
-Filters: `/flags/?environment=&is_enabled=&flag_type=`, `/rules/?flag=`,
-`/conditions/?rule=`. A malformed filter value returns `400`, never an empty page.
+Filters: `/environments/?project=`, `/flags/?environment=&project=&is_enabled=&flag_type=`,
+`/rules/?flag=`, `/conditions/?rule=`. A malformed filter value returns `400`,
+never an empty page.
 
 The flag payload distinguishes configuration from what is actually served:
 
@@ -522,7 +651,9 @@ Filters: `/sdk-registrations/?environment=&sdk_type=&version=`,
 
 ### Analytics
 
-Aggregates for the dashboard. All four accept `?environment=<uuid>` to scope.
+Aggregates for the dashboard. All four accept `?environment=<uuid>` or
+`?project=<uuid>` to scope, and all four are bounded to the environments the
+caller can read analytics on — an id outside them is a `404`.
 
 | Endpoint | Returns |
 |---|---|
@@ -552,7 +683,7 @@ Aggregates for the dashboard. All four accept `?environment=<uuid>` to scope.
 ### SDK API
 
 ```bash
-# Get API key from admin (Environment → api_key)
+# Get the API key from the dashboard (Environments → copy)
 
 # Get all flags for local evaluation
 curl -H "X-API-Key: <api_key>" http://localhost:8000/api/v1/sdk/flags/
@@ -670,6 +801,12 @@ the SDKs are serving.
 - **Multivariate flags are not implemented.** `FlagType.MULTIVARIATE` exists on
   the model, but `FlagEvaluationService` only ever returns a boolean.
 - **No settings page.** SDK/API keys are read from the Environments page.
+- **Some tenancy actions exist only in the API.** Rotating an environment's API
+  key (`POST /environments/{id}/rotate_api_key/`), editing an environment, and
+  changing someone's organization role
+  (`PATCH /tenancy/organization-memberships/{id}/`) all work over HTTP but have
+  no screen — today the dashboard changes an organization role by removing the
+  member and inviting them again.
 - **`test_admin_api.py` is a stub.** Its 25 tests are `pass` bodies with
   `# TODO: Implement admin authentication`, so the environment/flag/rule/condition
   CRUD has no automated coverage yet.
@@ -678,7 +815,13 @@ the SDKs are serving.
 
 | Model | Purpose |
 |-------|---------|
-| **Environment** | Deployment target (production, staging, dev) |
+| **Organization** | Top of the tenancy hierarchy; carries the plan and its seat ceiling |
+| **Project** | Groups environments inside one organization; `key` unique per organization |
+| **OrganizationMembership** | A user's role in an organization: `ADMIN` or `USER` |
+| **ProjectMembership** | A user's role in one project: `ADMIN`, `EDITOR`, `OPERATOR`, `VIEWER` |
+| **EnvironmentMembership** | The same four roles, on one environment |
+| **Invitation** | Single-use link into an organization; only the token's SHA-256 is stored |
+| **Environment** | Deployment target (production, staging, dev) inside a project; `key` unique per project |
 | **FeatureFlag** | Toggle for a feature (enabled/disabled) |
 | **StrategyRule** | Group of conditions for a flag |
 | **Condition** | Single rule (attribute + operator + value) |
