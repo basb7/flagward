@@ -216,9 +216,9 @@ export const authApi = {
     }),
 };
 
-// Projects API (read-only here: creating/moving a Project is out of scope
-// for this fix; this is only enough surface for the environment-creation
-// dialog below to pick a `project` to create into.)
+// Projects API (read-only here: creating a Project lives on `tenancyApi`
+// below; this is only enough surface for the environment-creation dialog
+// below to pick a `project` to create into.)
 export interface Project {
   id: string;
   organization: string;
@@ -255,7 +255,13 @@ export const environmentsApi = {
 
   get: (id: string) => request<Environment>(`/api/v1/environments/${id}/`),
 
-  create: (data: { name: string; key: string; project: string }) =>
+  /**
+   * `key` is optional: omit it and the server derives one from `name`
+   * (unique within the project). Send it only to ask for a specific key --
+   * a taken one comes back as a 400 on the `key` field rather than being
+   * silently replaced.
+   */
+  create: (data: { name: string; key?: string; project: string }) =>
     request<Environment>('/api/v1/environments/', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -706,7 +712,13 @@ export const tenancyApi = {
   projects: () =>
     request<PaginatedResponse<Project>>('/api/v1/tenancy/projects/'),
 
-  createProject: (data: { organization: string; name: string; key: string }) =>
+  /**
+   * `key` is optional: omit it and the server derives one from `name`
+   * (unique within the organization). Send it only to ask for a specific
+   * key -- a taken one comes back as a 400 on the `key` field rather than
+   * being silently replaced.
+   */
+  createProject: (data: { organization: string; name: string; key?: string }) =>
     request<Project>('/api/v1/tenancy/projects/', {
       method: 'POST',
       body: JSON.stringify(data),

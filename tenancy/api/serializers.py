@@ -16,7 +16,7 @@ from tenancy.models import (
     ProjectRole,
 )
 from tenancy.scoping import environments_with, orgs_with, projects_with
-from tenancy.serializers import CapabilityScopedFKMixin
+from tenancy.serializers import CapabilityScopedFKMixin, DerivedKeyMixin
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -27,7 +27,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'plan', 'created_at']
 
 
-class ProjectSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
+class ProjectSerializer(DerivedKeyMixin, CapabilityScopedFKMixin, serializers.ModelSerializer):
     """
     Serializer for Project model.
 
@@ -36,6 +36,9 @@ class ProjectSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
     the root of the FK-narrowing chain one level above `EnvironmentSerializer`'s
     `project` field -- without it, any authenticated user could POST a
     project into another organization's account by UUID.
+
+    `key` is derived from `name` on create (see `DerivedKeyMixin`) and stays
+    writable so the rename dialog can edit it.
     """
     capability_scoped_fields = {
         "organization": (Capability.PROJECT_CREATE, orgs_with),
@@ -45,6 +48,13 @@ class ProjectSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
         model = Project
         fields = ['id', 'organization', 'name', 'key', 'created_at']
         read_only_fields = ['id', 'created_at']
+        extra_kwargs = {'key': {'required': False}}
+
+    def derived_key_queryset(self, attrs):
+        # `unique_project_key_per_organization` scopes uniqueness to the
+        # organization, so the derivation has to look exactly that far and no
+        # further -- a sibling organization's `checkout` is not a collision.
+        return Project.objects.filter(organization=attrs["organization"])
 
     def validate(self, attrs):
         # A rename must never double as a move-between-orgs primitive: moving
