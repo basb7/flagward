@@ -19,6 +19,7 @@ By participating in this project you agree to abide by our
 - [Linting and formatting](#linting-and-formatting)
 - [Commit conventions](#commit-conventions)
 - [Pull request process](#pull-request-process)
+- [Signing the CLA](#signing-the-cla)
 - [Reporting security issues](#reporting-security-issues)
 
 ---
@@ -297,6 +298,48 @@ Branch names follow the same shape: `feat/percentage-rollout`,
    pull requests.
 7. Address review comments with additional commits — avoid force-pushing during
    review so reviewers can see what changed.
+8. Sign the CLA on your first pull request. See below.
+
+---
+
+## Signing the CLA
+
+Your first pull request needs one comment on it:
+
+```
+I have read the CLA document and I hereby sign the CLA
+```
+
+That is the whole process. You sign **once** — it covers every contribution
+you make to this project afterwards.
+
+### What you are agreeing to, in plain terms
+
+You keep the copyright in everything you write. You are granting a licence
+broad enough that Flagward can be relicensed later if it has to be — to a
+copyleft licence, or to offer a commercial licence alongside the open one.
+
+**Why ask at all, when the project is MIT and means to stay open?** Because
+the option has to be kept open now or not at all. Every contributor owns the
+copyright in their own contribution, so relicensing needs all of them to
+agree. At three contributors that is an afternoon of email. At fifty, spread
+over years, with old addresses and changed jobs, it is a permanent no.
+
+Asking today costs you one comment. Not asking closes a door that cannot be
+reopened.
+
+It is **not** a transfer of ownership, not exclusive, and has no claim on
+anything you write outside this project. Use your own contribution wherever
+else you like.
+
+The full text is in [CLA.md](CLA.md), adapted from the Apache Software
+Foundation's ICLA v2.0 — deliberately not novel, so you can recognise what
+you are signing.
+
+If your employer owns the intellectual property you create, check that you
+are allowed to contribute before signing (clause 4). If your organisation
+would rather cover several people under one corporate agreement, open an
+issue and we will arrange it.
 
 ### Checklist
 
