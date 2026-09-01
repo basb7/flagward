@@ -25,8 +25,9 @@ import { useToast } from '@/lib/toast-context';
  *
  * Only the name is asked for: the server derives the environment's `key`
  * from it, and the SDKs authenticate with `api_key`, never the key. The key
- * stays writable on `PATCH /api/v1/environments/{id}/` -- there is simply no
- * screen editing it yet, unlike a project's.
+ * stays writable on `PATCH /api/v1/environments/{id}/`, but no screen edits
+ * it -- the rename dialog on the Environments page sends `name` alone, on
+ * purpose. See `environmentsApi.updateEnvironment` for why.
  */
 export function CreateEnvironmentDialog({
   projectId,

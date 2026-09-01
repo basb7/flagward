@@ -267,7 +267,23 @@ export const environmentsApi = {
       body: JSON.stringify(data),
     }),
 
-  update: (id: string, data: Partial<Environment>) =>
+  /**
+   * Renames an environment. `name` is the only field this accepts, and the
+   * narrowness is the point rather than an oversight.
+   *
+   * `PATCH /api/v1/environments/{id}/` also takes `key` and `project`, and
+   * should keep taking `key` -- it is the escape hatch for fixing a bad
+   * derivation. But no dashboard caller wants either: `key` is derived from
+   * `name` only on create (a rename deliberately leaves it alone), and
+   * nothing resolves an environment by it -- no URL, no filter, no lookup,
+   * no SDK path, because the SDKs authenticate with `api_key`. Editing it
+   * would be a knob with nothing on the other end, and `project` moves an
+   * environment between projects, which is not a rename at all.
+   *
+   * The payload type is where that stays true for every future caller, so
+   * widen it only once something actually reads `key`.
+   */
+  updateEnvironment: (id: string, data: { name: string }) =>
     request<Environment>(`/api/v1/environments/${id}/`, {
       method: 'PATCH',
       body: JSON.stringify(data),

@@ -6,6 +6,7 @@ import {
   Copy,
   Layers,
   Lock,
+  Pencil,
   Plus,
   Trash2,
 } from 'lucide-react';
@@ -13,6 +14,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { CreateEnvironmentDialog } from '@/components/dashboard/create-environment-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
+import { RenameResourceDialog } from '@/components/dashboard/rename-resource-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -171,6 +173,18 @@ export default function EnvironmentsPage() {
     );
   }
 
+  // Mirrors the backend, which maps `partial_update` on the environment
+  // viewset to `ENVIRONMENT_MANAGE`. `hasOrgCapability` only sees
+  // organization-level grants, so someone holding `environment.manage`
+  // through a project- or environment-scoped grant loses the button even
+  // though the `PATCH` would succeed -- the same blind spot every other
+  // capability check in the dashboard has, not one introduced here.
+  const canManageEnvironments = hasOrgCapability(
+    user,
+    currentOrganization?.id,
+    'environment.manage',
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -262,6 +276,36 @@ export default function EnvironmentsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-1">
+                        {canManageEnvironments ? (
+                          <RenameResourceDialog
+                            title="Rename environment"
+                            description="Only the name changes. The key stays as it was derived on create."
+                            toastMessage="Environment renamed"
+                            fields={[{ key: 'name', label: 'Name' }]}
+                            initialValues={{ name: env.name }}
+                            onSave={async (values) => {
+                              await environmentsApi.updateEnvironment(env.id, {
+                                name: values.name,
+                              });
+                            }}
+                            onSaved={loadEnvironments}
+                            triggerButton={
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground hover:text-foreground hover:bg-muted"
+                              />
+                            }
+                            triggerContent={
+                              <>
+                                <Pencil className="h-4 w-4" />
+                                <span className="sr-only">
+                                  Rename environment
+                                </span>
+                              </>
+                            }
+                          />
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="icon"

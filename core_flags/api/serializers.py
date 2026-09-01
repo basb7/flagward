@@ -20,7 +20,11 @@ class EnvironmentSerializer(DerivedKeyMixin, CapabilityScopedFKMixin, serializer
     Serializer for Environment model.
 
     `key` is derived from `name` on create (see `DerivedKeyMixin`) and stays
-    writable so the rename dialog can edit it.
+    writable here, but the rename dialog deliberately does NOT send it --
+    `tenancyApi.updateEnvironment` accepts `{ name }` and nothing else. The
+    field survives as an escape hatch for a derivation that came out wrong,
+    reachable by API and not by a screen. Do not "restore" it to the dialog
+    on the strength of it being writable.
     """
     class Meta:
         model = Environment
