@@ -2,14 +2,24 @@
 
 ## Supported versions
 
-Flagward is pre-1.0. Security fixes land on `main` and are released from there.
-Please make sure you can reproduce an issue against the latest `main` before
-reporting it.
+Flagward is pre-1.0 and self-hosted: you deploy it from source, so what you
+are running is a commit, not a download. Two things are supported — the
+latest tagged release, and `main`.
 
 | Version | Supported |
 |---------|-----------|
-| `main`  | ✅ |
-| tagged pre-1.0 releases | ❌ |
+| latest tagged release | ✅ |
+| `main` | ✅ |
+| earlier releases | ❌ |
+
+Security fixes land on `main` first and are tagged from there. Please
+reproduce an issue against `main` or the latest release before reporting it,
+and say which one you are on — with no version to name, a report cannot be
+placed in time.
+
+Flagward and the React SDK (`flagward-sdk-react`) are versioned
+**independently**. Matching version numbers are a coincidence, not a
+pairing — do not read one as requiring the other.
 
 ## Reporting a vulnerability
 
