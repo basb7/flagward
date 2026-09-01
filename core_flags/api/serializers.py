@@ -12,15 +12,21 @@ from core_flags.models import (
 )
 from tenancy.capabilities import Capability
 from tenancy.scoping import environments_with, projects_with
-from tenancy.serializers import CapabilityScopedFKMixin
+from tenancy.serializers import CapabilityScopedFKMixin, DerivedKeyMixin
 
 
-class EnvironmentSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
-    """Serializer for Environment model."""
+class EnvironmentSerializer(DerivedKeyMixin, CapabilityScopedFKMixin, serializers.ModelSerializer):
+    """
+    Serializer for Environment model.
+
+    `key` is derived from `name` on create (see `DerivedKeyMixin`) and stays
+    writable so the rename dialog can edit it.
+    """
     class Meta:
         model = Environment
         fields = ['id', 'name', 'key', 'api_key', 'project']
         read_only_fields = ['id', 'api_key']
+        extra_kwargs = {'key': {'required': False}}
 
     # F3 -- the root of the FK-narrowing chain. Without this, any
     # authenticated user could POST an environment into another
@@ -28,6 +34,11 @@ class EnvironmentSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer
     capability_scoped_fields = {
         "project": (Capability.ENVIRONMENT_CREATE, projects_with),
     }
+
+    def derived_key_queryset(self, attrs):
+        # `unique_together = ("project", "key")` scopes uniqueness to the
+        # project: two projects may each have their own `production`.
+        return Environment.objects.filter(project=attrs["project"])
 
 
 class ConditionSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
