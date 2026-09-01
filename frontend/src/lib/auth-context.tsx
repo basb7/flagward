@@ -22,18 +22,33 @@ interface User {
  * Reads only what `/auth/me/` already answered through `resolve_capabilities`
  * -- never re-derived here, so the dashboard cannot drift from what the
  * backend actually enforces.
+ *
+ * The shape checks are not defensive noise. `organizations` arrives over the
+ * network, so the declared type is an assumption rather than a guarantee, and
+ * reading it unchecked fails in two different ways:
+ *
+ * - A non-array `organizations`, or an entry with no `capabilities` array,
+ *   throws a TypeError. Every caller is inside render, so that unmounts the
+ *   dashboard rather than hiding one button.
+ * - Worse, a `capabilities` that arrives as a *string* answers
+ *   `'org.manage.all'.includes('org.manage')` with `true` -- a malformed
+ *   payload silently granting a capability by substring.
+ *
+ * An `Array.isArray` on each level closes both: anything unrecognisable is
+ * simply not a grant.
  */
 export function hasOrgCapability(
   user: User | null,
   organizationId: string | null | undefined,
   capability: string,
 ): boolean {
-  if (!user || !organizationId) return false;
-  return (
-    user.organizations
-      .find((organization) => organization.id === organizationId)
-      ?.capabilities.includes(capability) ?? false
+  if (!user || !organizationId || !capability) return false;
+  if (!Array.isArray(user.organizations)) return false;
+  const organization = user.organizations.find(
+    (candidate) => candidate?.id === organizationId,
   );
+  if (!Array.isArray(organization?.capabilities)) return false;
+  return organization.capabilities.includes(capability);
 }
 
 interface AuthContextType {
