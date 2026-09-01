@@ -22,6 +22,10 @@ import { useToast } from '@/lib/toast-context';
  * Creates the first project of an organization, or another one from the
  * dashboard switcher -- both flows POST the same shape, so this dialog is
  * shared between them rather than duplicated.
+ *
+ * Only the name is asked for: the server derives the project's `key` from it
+ * and nothing resolves that key anyway. It stays editable afterwards in the
+ * rename dialog for anyone who wants a different one.
  */
 export function CreateProjectDialog({
   organizationId,
@@ -38,17 +42,17 @@ export function CreateProjectDialog({
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', key: '' });
+  const [name, setName] = useState('');
 
   const handleCreate = async () => {
     setIsSaving(true);
     try {
       const project = await tenancyApi.createProject({
         organization: organizationId,
-        ...form,
+        name,
       });
       setIsOpen(false);
-      setForm({ name: '', key: '' });
+      setName('');
       success('Project created successfully');
       onCreated?.(project);
     } catch (err) {
@@ -78,19 +82,8 @@ export function CreateProjectDialog({
             <Input
               id="project-name"
               placeholder="e.g., Mobile App"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="project-key" className="text-muted-foreground">
-              Key
-            </Label>
-            <Input
-              id="project-key"
-              placeholder="e.g., mobile-app"
-              value={form.key}
-              onChange={(e) => setForm({ ...form, key: e.target.value })}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
           </div>
         </div>
@@ -98,10 +91,7 @@ export function CreateProjectDialog({
           <Button variant="outline" onClick={() => setIsOpen(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={isSaving || !form.name || !form.key}
-          >
+          <Button onClick={handleCreate} disabled={isSaving || !name}>
             {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
             Create
           </Button>

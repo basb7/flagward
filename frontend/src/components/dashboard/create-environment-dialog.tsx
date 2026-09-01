@@ -22,6 +22,11 @@ import { useToast } from '@/lib/toast-context';
  * Creates the first environment of a project, or another one from the
  * Environments page -- both flows POST the same shape, so this dialog is
  * shared between them rather than duplicated.
+ *
+ * Only the name is asked for: the server derives the environment's `key`
+ * from it, and the SDKs authenticate with `api_key`, never the key. The key
+ * stays writable on `PATCH /api/v1/environments/{id}/` -- there is simply no
+ * screen editing it yet, unlike a project's.
  */
 export function CreateEnvironmentDialog({
   projectId,
@@ -38,17 +43,17 @@ export function CreateEnvironmentDialog({
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', key: '' });
+  const [name, setName] = useState('');
 
   const handleCreate = async () => {
     setIsSaving(true);
     try {
       const environment = await environmentsApi.create({
         project: projectId,
-        ...form,
+        name,
       });
       setIsOpen(false);
-      setForm({ name: '', key: '' });
+      setName('');
       success('Environment created successfully');
       onCreated?.(environment);
     } catch (err) {
@@ -80,19 +85,8 @@ export function CreateEnvironmentDialog({
             <Input
               id="environment-name"
               placeholder="e.g., Production"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="environment-key" className="text-muted-foreground">
-              Key
-            </Label>
-            <Input
-              id="environment-key"
-              placeholder="e.g., production"
-              value={form.key}
-              onChange={(e) => setForm({ ...form, key: e.target.value })}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
           </div>
         </div>
@@ -100,10 +94,7 @@ export function CreateEnvironmentDialog({
           <Button variant="outline" onClick={() => setIsOpen(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={isSaving || !form.name || !form.key}
-          >
+          <Button onClick={handleCreate} disabled={isSaving || !name}>
             {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
             Create
           </Button>
