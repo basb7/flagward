@@ -63,6 +63,14 @@ frontend/node_modules/
 frontend/.next/
 frontend/.env*.local
 
+# Playwright (end-to-end). Browser binaries live outside the repo by default
+# (~/.cache/ms-playwright), but PLAYWRIGHT_BROWSERS_PATH=0 puts them under
+# frontend/node_modules/, which is already ignored above.
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/
+
 # Local AI tooling metadata (contains machine-specific paths)
 .atl/
 

@@ -218,6 +218,45 @@ runner over the TypeScript sources directly — Node strips the types, so there
 is no transpiler step and no test dependency in `package.json`. Put a test
 beside the module it covers, named `<module>.test.ts`.
 
+### End-to-end tests
+
+`frontend/e2e/` holds [Playwright](https://playwright.dev/) tests that drive the
+real product in a real browser. They are not part of `npm test`: they need the
+**whole stack running**, so they are a separate script and a separate CI job.
+
+```bash
+# 1. Bring up Postgres, Redis, Django and Next.js (from the repository root)
+docker compose -f compose.dev.yml up -d
+
+# 2. One-time: fetch the browser
+cd frontend
+npx playwright install chromium
+
+# 3. Run
+npm run test:e2e
+npm run test:e2e -- --headed     # watch it happen
+npm run test:e2e -- --debug      # step through it
+npx playwright show-report       # last run's HTML report
+```
+
+If the API or the dashboard is not answering, the run stops before the first
+browser opens and tells you to start compose — rather than failing later as an
+inscrutable selector timeout. Override the origins with `E2E_BASE_URL` and
+`E2E_API_URL` if you serve them somewhere else.
+
+Notes:
+
+- **Chromium only.** A second engine costs another download and another few
+  minutes of CI for insight this suite is not yet deep enough to give.
+- **Prefer accessible selectors** — `getByRole`, `getByLabel`, `getByText`.
+  A test that breaks when a label changes is telling you something real; one
+  pinned to a CSS class is not. Reach for `data-testid` only when there is
+  genuinely no accessible handle, and say so in the review.
+- **The tests write to the dev database and do not clean up.** Every run leaves
+  behind an account, an organization, a project and an environment, named with
+  a per-run id so they are recognisable. Wipe them with
+  `docker compose -f compose.dev.yml down -v` when the noise gets in the way.
+
 ---
 
 ## Linting and formatting
