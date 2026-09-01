@@ -14,4 +14,3 @@
 - [ ] `npm run lint` and `npm run build` pass, if the frontend changed
 - [ ] Documentation updated, if behaviour changed
 - [ ] Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
-- [ ] [CLA](../CLA.md) signed — first-time contributors only, one comment on this PR
