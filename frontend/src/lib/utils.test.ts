@@ -1,5 +1,4 @@
-import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatRelativeTime, formatTimestamp, safeNextPath } from './utils.ts';
 
 describe('safeNextPath', () => {
@@ -21,20 +20,19 @@ describe('safeNextPath', () => {
     input: string | null | undefined,
     result: string,
   ) {
-    assert.ok(
+    expect(
       result.startsWith('/'),
       `safeNextPath(${JSON.stringify(input)}) => ${JSON.stringify(result)} is not path-rooted`,
-    );
-    assert.ok(
-      !result.startsWith('//'),
+    ).toBe(true);
+    expect(
+      result.startsWith('//'),
       `safeNextPath(${JSON.stringify(input)}) => ${JSON.stringify(result)} is protocol-relative`,
-    );
+    ).toBe(false);
     const resolved = new URL(result, SITE_ORIGIN);
-    assert.equal(
+    expect(
       resolved.origin,
-      SITE_ORIGIN,
       `safeNextPath(${JSON.stringify(input)}) => ${JSON.stringify(result)} resolves off-origin (${resolved.origin})`,
-    );
+    ).toBe(SITE_ORIGIN);
   }
 
   // Every one of these has been used, somewhere, to smuggle a foreign host
@@ -99,7 +97,7 @@ describe('safeNextPath', () => {
       '   ',
     ];
     for (const input of alwaysFallback) {
-      assert.equal(safeNextPath(input), '/dashboard');
+      expect(safeNextPath(input)).toBe('/dashboard');
     }
   });
 
@@ -107,19 +105,19 @@ describe('safeNextPath', () => {
     // This is the exact bypass this function was fixed for: an origin-only
     // check on the raw string sees a same-origin path, but the resolved
     // pathname is protocol-relative. Pin both cases down explicitly.
-    assert.equal(safeNextPath('/..//evil.com'), '/dashboard');
-    assert.equal(safeNextPath('/./../..//evil.com'), '/dashboard');
+    expect(safeNextPath('/..//evil.com')).toBe('/dashboard');
+    expect(safeNextPath('/./../..//evil.com')).toBe('/dashboard');
   });
 
   it('keeps a same-origin path whose escaped/control bytes merely look suspicious', () => {
     // These stay on this origin once resolved -- they are safe, even though
     // they are not equal to the fallback. Pinning the exact values guards
     // against a future change accidentally over- or under-blocking them.
-    assert.equal(safeNextPath('/%09/evil.com'), '/%09/evil.com');
-    assert.equal(safeNextPath('/%2F%2Fevil.com'), '/%2F%2Fevil.com');
+    expect(safeNextPath('/%09/evil.com')).toBe('/%09/evil.com');
+    expect(safeNextPath('/%2F%2Fevil.com')).toBe('/%2F%2Fevil.com');
     // A literal (unescaped) tab is stripped by URL parsing, collapsing the
     // path to "/evil.com" -- still a same-origin path, not a host.
-    assert.equal(safeNextPath('/\tevil.com'), '/evil.com');
+    expect(safeNextPath('/\tevil.com')).toBe('/evil.com');
   });
 
   it('passes legitimate same-origin paths through unchanged, including query and hash', () => {
@@ -130,23 +128,23 @@ describe('safeNextPath', () => {
       '/dashboard#top',
     ];
     for (const path of legitimate) {
-      assert.equal(safeNextPath(path), path);
+      expect(safeNextPath(path)).toBe(path);
     }
   });
 
   it('falls back to "/dashboard" by default for null, undefined, and empty input', () => {
-    assert.equal(safeNextPath(null), '/dashboard');
-    assert.equal(safeNextPath(undefined), '/dashboard');
-    assert.equal(safeNextPath(''), '/dashboard');
+    expect(safeNextPath(null)).toBe('/dashboard');
+    expect(safeNextPath(undefined)).toBe('/dashboard');
+    expect(safeNextPath('')).toBe('/dashboard');
   });
 
   it('honours a custom fallback', () => {
-    assert.equal(safeNextPath(null, '/login'), '/login');
-    assert.equal(safeNextPath('https://evil.com', '/login'), '/login');
+    expect(safeNextPath(null, '/login')).toBe('/login');
+    expect(safeNextPath('https://evil.com', '/login')).toBe('/login');
   });
 
   it('passes a bare "/" through unchanged', () => {
-    assert.equal(safeNextPath('/'), '/');
+    expect(safeNextPath('/')).toBe('/');
   });
 });
 
@@ -157,36 +155,52 @@ describe('formatRelativeTime', () => {
     return new Date(FIXED_NOW + deltaMs).toISOString();
   }
 
-  it('reports "now" at exactly zero difference', (t) => {
-    t.mock.timers.enable({ apis: ['Date'], now: FIXED_NOW });
-    assert.equal(formatRelativeTime(at(0)), 'now');
+  /**
+   * Only `Date` is faked, exactly as `node:test`'s
+   * `t.mock.timers.enable({ apis: ['Date'] })` did. Faking the timer APIs too
+   * would stall anything in the runtime that waits on one.
+   *
+   * `node:test` restored its clock when the test ended; Vitest's does not, so
+   * the `afterEach` below is what replaces that.
+   */
+  function freezeClock() {
+    vi.useFakeTimers({ toFake: ['Date'], now: FIXED_NOW });
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  it('stays in seconds just under the one-minute boundary', (t) => {
-    t.mock.timers.enable({ apis: ['Date'], now: FIXED_NOW });
-    assert.equal(formatRelativeTime(at(-59_000)), '59 seconds ago');
+  it('reports "now" at exactly zero difference', () => {
+    freezeClock();
+    expect(formatRelativeTime(at(0))).toBe('now');
   });
 
-  it('rolls over to "1 minute ago" exactly at the one-minute boundary', (t) => {
+  it('stays in seconds just under the one-minute boundary', () => {
+    freezeClock();
+    expect(formatRelativeTime(at(-59_000))).toBe('59 seconds ago');
+  });
+
+  it('rolls over to "1 minute ago" exactly at the one-minute boundary', () => {
     // RELATIVE_UNITS compares with a strict "<", so a difference exactly
     // equal to a step size belongs to the *next* unit up, not the last one.
-    t.mock.timers.enable({ apis: ['Date'], now: FIXED_NOW });
-    assert.equal(formatRelativeTime(at(-60_000)), '1 minute ago');
+    freezeClock();
+    expect(formatRelativeTime(at(-60_000))).toBe('1 minute ago');
   });
 
-  it('reports future timestamps as "in X", not "ago"', (t) => {
-    t.mock.timers.enable({ apis: ['Date'], now: FIXED_NOW });
-    assert.equal(formatRelativeTime(at(30_000)), 'in 30 seconds');
-    assert.equal(formatRelativeTime(at(60_000)), 'in 1 minute');
+  it('reports future timestamps as "in X", not "ago"', () => {
+    freezeClock();
+    expect(formatRelativeTime(at(30_000))).toBe('in 30 seconds');
+    expect(formatRelativeTime(at(60_000))).toBe('in 1 minute');
   });
 
-  it('does not throw on a malformed timestamp', (t) => {
-    t.mock.timers.enable({ apis: ['Date'], now: FIXED_NOW });
+  it('does not throw on a malformed timestamp', () => {
+    freezeClock();
     // Date.parse('not-a-date') is NaN, so the elapsed-seconds value is NaN.
     // Intl.RelativeTimeFormat#format throws a RangeError on a non-finite
     // value, so this must be guarded explicitly rather than left to throw.
-    assert.equal(formatRelativeTime('not-a-date'), 'Invalid Date');
-    assert.equal(formatRelativeTime(''), 'Invalid Date');
+    expect(formatRelativeTime('not-a-date')).toBe('Invalid Date');
+    expect(formatRelativeTime('')).toBe('Invalid Date');
   });
 });
 
@@ -195,12 +209,12 @@ describe('formatTimestamp', () => {
     const formatted = formatTimestamp('2026-01-01T12:00:00.000Z');
     // Locale-dependent, but must at least mention the day and year context
     // a person would need to disambiguate it from "today".
-    assert.match(formatted, /Jan/);
-    assert.match(formatted, /1/);
+    expect(formatted).toMatch(/Jan/);
+    expect(formatted).toMatch(/1/);
   });
 
   it('reports "Invalid Date" for a malformed timestamp, without throwing', () => {
-    assert.equal(formatTimestamp('not-a-date'), 'Invalid Date');
-    assert.equal(formatTimestamp(''), 'Invalid Date');
+    expect(formatTimestamp('not-a-date')).toBe('Invalid Date');
+    expect(formatTimestamp('')).toBe('Invalid Date');
   });
 });
