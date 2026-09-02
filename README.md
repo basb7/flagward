@@ -313,7 +313,7 @@ In production, use the web dashboard at http://localhost:3000:
 9. **Watch it work**: Monitoring shows which SDKs are connected
 
    It will not show evaluations from a client evaluating locally, which is
-   what the React SDK does -- those never reach the server. Only calls to
+   what the JavaScript SDKs do -- those never reach the server. Only calls to
    `POST /api/v1/sdk/evaluate/` are recorded. See
    [Consuming flags from your app](#consuming-flags-from-your-app).
 
@@ -422,11 +422,11 @@ locks it.
 ## Consuming flags from your app
 
 ```bash
-npm install flagward-sdk-react
+npm install @flagward/react
 ```
 
 ```tsx
-import { FlagwardProvider, useFlag } from "flagward-sdk-react";
+import { FlagwardProvider, useFlag } from "@flagward/react";
 
 function App() {
   return (
@@ -451,18 +451,43 @@ function Checkout() {
 The API key is the environment's, from the dashboard. A key scopes the SDK to
 one environment and nothing else.
 
-Source: [basb7/flagward-sdk-react](https://github.com/basb7/flagward-sdk-react).
+### Outside React
+
+The client, the rule evaluator and the reporting live in `@flagward/core`,
+which has no framework dependency. Use it directly in a plain script, on a
+server, or in a framework that has no adapter yet:
+
+```bash
+npm install @flagward/core
+```
+
+```js
+import { FlagwardClient } from "@flagward/core";
+
+const client = new FlagwardClient({ apiKey: "your-environment-api-key" });
+await client.init();
+
+if (client.getFlag("new-checkout")) {
+  // ...
+}
+```
+
+Installing `@flagward/react` already brings the core in and re-exports it, so
+a React application needs only the one package.
+
+Source: [basb7/flagward-sdk-js](https://github.com/basb7/flagward-sdk-js) —
+one repository holding the shared core and one thin adapter per framework.
 
 ### Two ways to evaluate, and why it matters
 
-**Locally, which is what the React SDK does.** It downloads the flags and
-their rules once, evaluates in the browser, and an SSE stream keeps the
+**Locally, which is what the JavaScript SDKs do.** They download the flags and
+their rules once, evaluate in the process, and an SSE stream keeps the
 snapshot fresh. Evaluation costs nothing, works offline, and the user's
 context never leaves the client.
 
-The trade-off is that **the rules travel to the browser**. Anyone can open
-devtools and read that you target `plan == "enterprise"`. Do not put anything
-secret in a targeting rule.
+In a browser, the trade-off is that **the rules travel to the client**. Anyone
+can open devtools and read that you target `plan == "enterprise"`. Do not put
+anything secret in a targeting rule.
 
 **Remotely, via `POST /api/v1/sdk/evaluate/`.** You send the context, the
 server evaluates and answers. The rules stay on the server, at the cost of a

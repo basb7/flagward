@@ -17,9 +17,10 @@ reproduce an issue against `main` or the latest release before reporting it,
 and say which one you are on — with no version to name, a report cannot be
 placed in time.
 
-Flagward and the React SDK (`flagward-sdk-react`) are versioned
-**independently**. Matching version numbers are a coincidence, not a
-pairing — do not read one as requiring the other.
+Flagward and the JavaScript SDKs (`@flagward/core`, `@flagward/react`) are
+versioned **independently**, and so are the SDKs from each other. Matching
+version numbers are a coincidence, not a pairing — do not read one as
+requiring the other.
 
 ## Reporting a vulnerability
 
