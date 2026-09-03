@@ -5,6 +5,8 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 def env_flag(name, default):
     """Read a boolean setting from the environment."""
@@ -31,6 +33,18 @@ def env_base_url(name, default):
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Read .env before anything below asks the environment for a value.
+#
+# Resolved from BASE_DIR rather than from the working directory: a management
+# command run from elsewhere, or a test runner with its own cwd, has to see the
+# same settings as `manage.py runserver` does from the project root.
+#
+# Values already present in the environment win. A container that sets DB_HOST
+# through compose keeps it even if an .env file was copied into the image by
+# accident, so the file is a convenience for development and never a way to
+# quietly override a deployment.
+load_dotenv(BASE_DIR / '.env')
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # The fallback is for local development only; always set SECRET_KEY in production.

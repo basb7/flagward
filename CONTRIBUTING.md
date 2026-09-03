@@ -86,8 +86,9 @@ npm run dev
 
 ### Configuration
 
-Copy `.env.example` to `.env` and adjust as needed. Every value in
-`.env.example` is a development placeholder — **never reuse them in a
+Copy `.env.example` to `.env` and adjust as needed. It is read on startup, so
+`python manage.py runserver` picks it up with nothing else to set up. Every
+value in `.env.example` is a development placeholder — **never reuse them in a
 deployment**. In particular, `SECRET_KEY` must be set to a unique random value
 and `DEBUG` must be `False` outside of local development.
 

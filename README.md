@@ -182,11 +182,19 @@ docker compose build --no-cache
 
 ### Environment Variables
 
-For production, copy `.env.example` to `.env` and configure:
+Copy `.env.example` to `.env` and configure:
 
 ```bash
 cp .env.example .env
 ```
+
+The file is read on startup, in development and in production alike, and is
+resolved next to `manage.py` rather than from the working directory — a
+management command run from anywhere sees the same settings.
+
+Values already present in the environment win over the file. A container that
+sets `DB_HOST` through compose keeps it even if an `.env` reached the image, so
+the file is a convenience and never a way to quietly override a deployment.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
