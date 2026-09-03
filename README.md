@@ -421,6 +421,21 @@ locks it.
 
 ## Consuming flags from your app
 
+Install the package for your framework. Every one of them carries the same
+evaluator, so a rule resolves identically whichever you use, and an adapter
+re-exports the core — you install one package, not two.
+
+| Package | For |
+| --- | --- |
+| [`@flagward/react`](https://www.npmjs.com/package/@flagward/react) | React 18+ |
+| [`@flagward/vue`](https://www.npmjs.com/package/@flagward/vue) | Vue 3.5+ |
+| [`@flagward/core`](https://www.npmjs.com/package/@flagward/core) | everything else: a plain script, a server, a framework with no adapter yet |
+
+The API key is the environment's, from the dashboard. A key scopes the SDK to
+one environment and nothing else.
+
+### React
+
 ```bash
 npm install @flagward/react
 ```
@@ -448,10 +463,55 @@ function Checkout() {
 }
 ```
 
-The API key is the environment's, from the dashboard. A key scopes the SDK to
-one environment and nothing else.
+### Vue
 
-### Outside React
+```bash
+npm install @flagward/vue
+```
+
+It installs on the application, so nothing has to be wrapped:
+
+```ts
+// main.ts
+import { createApp } from "vue";
+import { flagward } from "@flagward/vue";
+
+createApp(App)
+  .use(flagward({
+    apiKey: "your-environment-api-key",
+    host: "http://localhost:8000",
+  }))
+  .mount("#app");
+```
+
+```vue
+<script setup lang="ts">
+import { useFlag } from "@flagward/vue";
+
+// Same caveat as above: undefined while loading, and for a key this
+// environment does not have.
+const { value, isLoading } = useFlag("new-checkout");
+</script>
+
+<template>
+  <LegacyCheckout v-if="isLoading" />
+  <NewCheckout v-else-if="value" />
+  <LegacyCheckout v-else />
+</template>
+```
+
+The context a rule is evaluated against can be a ref or a getter, at either
+level, so the attributes you target on stay current as the user signs in or
+changes plan:
+
+```ts
+const user = ref({ plan: "free" });
+
+app.use(flagward({ apiKey, context: user }));   // application-wide
+useFlag("beta", () => ({ plan: user.value.plan }));  // or for one call
+```
+
+### Without a framework
 
 The client, the rule evaluator and the reporting live in `@flagward/core`,
 which has no framework dependency. Use it directly in a plain script, on a
@@ -472,8 +532,10 @@ if (client.getFlag("new-checkout")) {
 }
 ```
 
-Installing `@flagward/react` already brings the core in and re-exports it, so
-a React application needs only the one package.
+This works on a server as well as in a browser. Where there is no
+`EventSource` — server rendering, plain Node — live updates are reported as off
+and the flags already read keep working, rather than the client failing to
+start.
 
 Source: [basb7/flagward-sdk-js](https://github.com/basb7/flagward-sdk-js) —
 one repository holding the shared core and one thin adapter per framework.
@@ -673,6 +735,13 @@ Written by the SDK surface, never edited by hand.
 
 Filters: `/sdk-registrations/?environment=&sdk_type=&version=`,
 `/evaluations/?flag=&environment=&result=true|false`.
+
+Each SDK registers under its own `sdk_type`, so one environment can hold a
+`REACT` row and a `VUE` row at once. `SDKType` does not declare those two yet
+and Django does not validate choices on save, so they are stored and returned
+as sent — filter by the literal value. Declaring them is
+[open work](https://github.com/basb7/flagward-sdk-js); nothing needs to change
+in an SDK when it lands.
 
 ### Analytics
 
