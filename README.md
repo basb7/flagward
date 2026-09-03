@@ -182,11 +182,23 @@ docker compose build --no-cache
 
 ### Environment Variables
 
-For production, copy `.env.example` to `.env` and configure:
+Copy `.env.example` to `.env` and configure:
 
 ```bash
 cp .env.example .env
 ```
+
+The SQLite fallback is why the backend runs with nothing configured, and it is
+worth knowing about: it is not what CI or a deployment runs, so a migration or
+a query that behaves differently there will not show up locally.
+
+The file is read on startup, in development and in production alike, and is
+resolved next to `manage.py` rather than from the working directory — a
+management command run from anywhere sees the same settings.
+
+Values already present in the environment win over the file. A container that
+sets `DB_HOST` through compose keeps it even if an `.env` reached the image, so
+the file is a convenience and never a way to quietly override a deployment.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -195,6 +207,13 @@ cp .env.example .env
 | `DJANGO_SUPERUSER_USERNAME` | Admin username | `admin` |
 | `DJANGO_SUPERUSER_EMAIL` | Admin email | `admin@example.com` |
 | `DJANGO_SUPERUSER_PASSWORD` | Admin password | `admin` |
+| `DB_NAME` | PostgreSQL database. **Setting this (or `USE_POSTGRES`) is what selects PostgreSQL**; with neither, the app falls back to SQLite at `db.sqlite3` | unset (SQLite) |
+| `DB_USER` | PostgreSQL user | `postgres` |
+| `DB_PASSWORD` | PostgreSQL password | empty |
+| `DB_HOST` | PostgreSQL host | `localhost` |
+| `DB_PORT` | PostgreSQL port | `5432` |
+| `REDIS_URL` | Cache backend. Unset, Django uses an in-process cache — correct for one development server, wrong for more than one process | unset |
+| `REDIS_STREAMS_URL` | Backs the flag-change stream to connected SDKs. Unset, flags still evaluate; what stops is live propagation | unset |
 | `ALLOWED_HOSTS` | Allowed domains | `localhost,127.0.0.1` |
 | `CORS_ALLOWED_ORIGINS` | CORS origins | `http://localhost:3000` |
 | `CSRF_TRUSTED_ORIGINS` | CSRF origins | `http://localhost:3000` |
