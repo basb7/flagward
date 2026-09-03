@@ -48,8 +48,6 @@ CSRF_TRUSTED_ORIGINS = env_list(
 )
 
 # Application definition
-EDITION = os.getenv('PRODUCT_EDITION', 'community')
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -69,9 +67,6 @@ INSTALLED_APPS = [
     'authentication',
     'tenancy',
 ]
-
-if EDITION == 'enterprise':
-    INSTALLED_APPS.append('enterprise_billing')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
