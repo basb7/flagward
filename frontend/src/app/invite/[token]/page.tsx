@@ -15,6 +15,7 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, invitationsApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { errorCopy } from '@/lib/error-copy';
 import { useToast } from '@/lib/toast-context';
 
 /**
@@ -24,28 +25,6 @@ import { useToast } from '@/lib/toast-context';
  * there is exactly one honest message for it.
  */
 const INVALID_LINK_MESSAGE = 'This invitation link is not valid any more.';
-
-/**
- * Accept, unlike preview, DOES distinguish its failures -- map each code to
- * copy a person can act on. `invitation_not_found` isn't in the backend
- * contract's headline list of distinguishable codes, but by the time an
- * authenticated accept call hits it the token is exactly as dead as an
- * invalid preview, so it folds into the same generic message.
- */
-function describeAcceptError(code: string): string {
-  switch (code) {
-    case 'invitation_revoked':
-      return 'This invitation has been revoked.';
-    case 'invitation_expired':
-      return 'This invitation has expired.';
-    case 'invitation_already_used':
-      return 'This invitation has already been used.';
-    case 'seat_limit_reached':
-      return 'This organization has no seats left. Ask an admin to free one up or upgrade the plan, then try again.';
-    default:
-      return INVALID_LINK_MESSAGE;
-  }
-}
 
 type PreviewState =
   | { status: 'loading' }
@@ -92,11 +71,13 @@ export default function InvitePage() {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.message === 'already_a_member') {
-          info('You are already a member of this organization.');
+          info(errorCopy('already_a_member'));
           router.push('/dashboard');
           return;
         }
-        showError(describeAcceptError(err.message));
+        // Anything with no copy means the token itself is dead, which is
+        // more useful on this page than the code would be.
+        showError(errorCopy(err.message, INVALID_LINK_MESSAGE));
         // Every other code means the token itself is now dead, except a
         // seat-limit failure -- that one can resolve once an admin frees a
         // seat or upgrades the plan, so the confirm action stays available.

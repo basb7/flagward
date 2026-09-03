@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { type Project, tenancyApi } from '@/lib/api';
+import { errorCopy } from '@/lib/error-copy';
 import { useToast } from '@/lib/toast-context';
 
 /**
@@ -57,7 +58,9 @@ export function CreateProjectDialog({
       onCreated?.(project);
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : 'Failed to create project',
+        err instanceof Error
+          ? errorCopy(err.message)
+          : 'Failed to create project',
       );
     } finally {
       setIsSaving(false);
