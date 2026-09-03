@@ -56,6 +56,9 @@ services:
       - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
       - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@example.com}
       - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin}
+      # Unlimited unless a deployment says otherwise. A hosted deployment sets
+      # FREE here; a self-hosted one leaves it alone.
+      - DEFAULT_ORGANIZATION_PLAN=${DEFAULT_ORGANIZATION_PLAN:-COMMUNITY}
     depends_on:
       db:
         condition: service_healthy

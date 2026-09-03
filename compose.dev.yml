@@ -60,6 +60,10 @@ services:
       - DJANGO_SUPERUSER_USERNAME=admin
       - DJANGO_SUPERUSER_EMAIL=admin@example.com
       - DJANGO_SUPERUSER_PASSWORD=admin
+      # Unlimited, which is what a self-hosted install wants. Override it to
+      # FREE, STARTER or TEAM in your shell or .env to exercise a plan's
+      # ceilings; the ceilings themselves are in tenancy/capabilities.py.
+      - DEFAULT_ORGANIZATION_PLAN=${DEFAULT_ORGANIZATION_PLAN:-COMMUNITY}
     depends_on:
       db:
         condition: service_healthy
