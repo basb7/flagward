@@ -83,11 +83,17 @@ class TestDuplicateEmailsRefuseToMigrate:
 
             # Nothing was applied: the index was never created, and neither
             # row was renamed to "fix" the conflict for them.
+            #
+            # Asked through Django's introspection rather than the database's
+            # own catalogue. The migration creates the index with portable SQL
+            # and runs inside a transaction on either engine, so this test has
+            # nothing PostgreSQL-specific about it -- reading pg_indexes was
+            # the only reason it could not run on the SQLite the project falls
+            # back to, and a test that only runs in CI is a test whose failures
+            # are found late.
             with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'auth_user_email_unique'"
-                )
-                assert cursor.fetchone()[0] == 0
+                indexes = connection.introspection.get_constraints(cursor, "auth_user")
+            assert "auth_user_email_unique" not in indexes
             emails = set(
                 User.objects.filter(username__in=["first", "second"]).values_list("email", flat=True)
             )
