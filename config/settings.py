@@ -31,6 +31,17 @@ def env_base_url(name, default):
     return os.getenv(name, default).strip().rstrip('/')
 
 
+# The plan a new organization is created on.
+#
+# COMMUNITY is unlimited, which is what a self-hosted install wants and why it
+# is the default: nothing about quotas reaches an operator who sets nothing. A
+# hosted deployment sets FREE here, and that single value is the whole
+# difference between the two editions -- the code is identical.
+#
+# A plain string rather than tenancy.models.Plan: settings is imported before
+# any app is loaded, so it cannot reach a model. Validated at the point of use.
+DEFAULT_ORGANIZATION_PLAN = os.getenv('DEFAULT_ORGANIZATION_PLAN', 'COMMUNITY')
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 

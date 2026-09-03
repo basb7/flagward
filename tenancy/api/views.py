@@ -18,6 +18,7 @@ An unnarrowed FK here would reopen exactly the root-level hole the tenancy
 change closed (F3), one level above it.
 """
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
@@ -29,7 +30,7 @@ from rest_framework.views import APIView
 
 from core_flags.models import Condition, Environment, FeatureFlag, FlagOverride, StrategyRule
 from sdk_api.models import EvaluationLog, SDKRegistration
-from tenancy.capabilities import Capability, max_seats, resolve_capabilities
+from tenancy.capabilities import Capability, max_projects, max_seats, resolve_capabilities
 from tenancy.models import (
     EnvironmentMembership,
     Invitation,
@@ -140,6 +141,11 @@ class OrganizationViewSet(
         # A user must never end up with an organization it cannot
         # administer, so the ADMIN membership is created in the same
         # transaction as the organization, not a second request.
+        #
+        # The plan is not accepted from the request: the serializer marks it
+        # read-only and the model defaults it from DEFAULT_ORGANIZATION_PLAN.
+        # Choosing it would make upgrading a matter of adding a field to a POST
+        # body.
         with transaction.atomic():
             organization = serializer.save()
             OrganizationMembership.objects.create(
@@ -298,6 +304,45 @@ class ProjectViewSet(
 
     def get_queryset(self):
         return projects_with(self.request.user, Capability.PROJECT_VIEW)
+
+    def create(self, request, *args, **kwargs):
+        """
+        Refuse a project the organization's plan does not allow.
+
+        Unlike the organization ceiling, this one has something to consult
+        from the start: the organization exists, so its own plan answers, the
+        same way it answers for seats.
+
+        An unusable organization value is left to the serializer, which
+        already reports it properly -- checking a quota against something that
+        will be rejected anyway would only change a clear error into a
+        confusing one.
+        """
+        organization = self._organization_from(request)
+        if organization is not None:
+            with transaction.atomic():
+                locked = Organization.objects.select_for_update().get(pk=organization.pk)
+                limit = max_projects(locked.plan)
+                if limit is not None and locked.projects.count() >= limit:
+                    return Response(
+                        {"error": "project_limit_reached"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                return super().create(request, *args, **kwargs)
+
+        return super().create(request, *args, **kwargs)
+
+    @staticmethod
+    def _organization_from(request):
+        """The organization a create request names, or None if it names none
+        this code can resolve -- a missing, malformed or unknown value."""
+        raw = request.data.get("organization")
+        if not raw:
+            return None
+        try:
+            return Organization.objects.filter(pk=raw).first()
+        except (ValueError, ValidationError, DjangoValidationError):
+            return None
 
     def _require_manage_permission(self, project):
         # Layer 3: visible-but-unprivileged is a 403, same split as
