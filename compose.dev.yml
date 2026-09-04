@@ -51,12 +51,12 @@ services:
       - DB_PASSWORD=postgres
       - REDIS_URL=redis://redis:6379/0
       - ALLOWED_HOSTS=localhost,127.0.0.1,backend
-      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8080
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000
       # Where password-reset and invitation links point. Not derived from
       # CORS_ALLOWED_ORIGINS: that lists every permitted origin, not which
       # one is the frontend.
       - FRONTEND_BASE_URL=http://localhost:3000
-      - CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8080
+      - CSRF_TRUSTED_ORIGINS=http://localhost:3000
       - DJANGO_SUPERUSER_USERNAME=admin
       - DJANGO_SUPERUSER_EMAIL=admin@example.com
       - DJANGO_SUPERUSER_PASSWORD=admin

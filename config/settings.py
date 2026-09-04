@@ -96,6 +96,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'sdk_api.cors.SdkCorsMiddleware',  # CORS for the SDK surface only -- see sdk_api/cors.py
     'corsheaders.middleware.CorsMiddleware',  # CORS - must be before CommonMiddleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -360,6 +361,13 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     'CORS_ALLOWED_ORIGINS',
     'http://localhost:3000,http://localhost:5173,http://localhost:8080'
 ).split(',')
+
+# Kept off the SDK surface, which `sdk_api.cors.SdkCorsMiddleware` answers for
+# every origin. Without this exclusion, a request from an *allowed* origin to an
+# SDK path would carry that middleware's wildcard together with the credentials
+# header below -- the one combination that turns an open path into an open
+# session.
+CORS_URLS_REGEX = r'^(?!/api/v1/sdk/).*$'
 
 CORS_ALLOW_CREDENTIALS = True  # Allow cookies to be sent
 
