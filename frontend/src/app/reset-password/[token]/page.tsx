@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, authApi } from '@/lib/api';
+import { errorCopy } from '@/lib/error-copy';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -84,7 +85,7 @@ export default function ResetPasswordPage() {
         } else {
           // Anything else is the generic 400, e.g. "Token and password are
           // required" -- already a full sentence, shown as-is.
-          setError(err.message);
+          setError(errorCopy(err.message));
         }
       } else {
         setError('Failed to reset the password.');

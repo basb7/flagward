@@ -207,6 +207,7 @@ the file is a convenience and never a way to quietly override a deployment.
 | `DJANGO_SUPERUSER_USERNAME` | Admin username | `admin` |
 | `DJANGO_SUPERUSER_EMAIL` | Admin email | `admin@example.com` |
 | `DJANGO_SUPERUSER_PASSWORD` | Admin password | `admin` |
+| `DEFAULT_ORGANIZATION_PLAN` | The plan a new organization is created on: `COMMUNITY` (unlimited), `FREE`, `STARTER` or `TEAM`. The only difference between a self-hosted install and a hosted one — see the ceilings in `tenancy/capabilities.py` | `COMMUNITY` |
 | `DB_NAME` | PostgreSQL database. **Setting this (or `USE_POSTGRES`) is what selects PostgreSQL**; with neither, the app falls back to SQLite at `db.sqlite3` | unset (SQLite) |
 | `DB_USER` | PostgreSQL user | `postgres` |
 | `DB_PASSWORD` | PostgreSQL password | empty |

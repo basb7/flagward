@@ -61,6 +61,7 @@ import {
   type ProjectRole,
   projectMembershipsApi,
 } from '@/lib/api';
+import { errorCopy } from '@/lib/error-copy';
 import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 import { formatRelativeTime } from '@/lib/utils';
@@ -613,9 +614,14 @@ export default function MembersPage() {
       loadProjectGrants();
       loadOrgWideGrants();
     } catch (err) {
-      // Relay the server's message verbatim -- e.g. `last_admin_cannot_be_removed`
+      // Through the shared copy table -- e.g. `last_admin_cannot_be_removed`
       // if this member became the last ADMIN in a race with another remover.
-      showError(err instanceof Error ? err.message : 'Failed to remove member');
+      // A code with no copy still reaches the user as itself.
+      showError(
+        err instanceof Error
+          ? errorCopy(err.message)
+          : 'Failed to remove member',
+      );
     } finally {
       setIsRemovingMember(false);
     }

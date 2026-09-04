@@ -170,13 +170,34 @@ PROJECT_ROLES_GRANTING: dict[str, frozenset[str]] = _invert(PROJECT_ROLE_CAPS)
 ENV_ROLES_GRANTING: dict[str, frozenset[str]] = _invert(ENV_ROLE_CAPS)
 
 
-_SEAT_LIMITS: dict[str, int | None] = {
-    Plan.COMMUNITY: None,
-    Plan.STARTER: 5,
-    Plan.TEAM: 25,
+# What each plan allows inside one organization. `None` is unlimited.
+#
+# Every ceiling here is scoped to an organization, and that is the whole shape
+# of the model: an organization is where a subscription lives, so anything a
+# plan limits is something an organization contains. How many organizations
+# somebody creates is not limited at all -- an empty one holds no projects, no
+# flags and no traffic, so metering them would be metering nothing.
+#
+# Flags, environments, conditions and rules are absent on purpose. A limit that
+# does not exist is not written down as `None` in twenty places -- it simply
+# has no entry and no check.
+#
+# COMMUNITY is unlimited on everything. That is what a self-hosted install runs
+# on, and it is why quotas can live in the open: a hosted deployment creates
+# organizations on a different row, and the code does not change.
+_LIMITS: dict[str, dict[str, int | None]] = {
+    Plan.COMMUNITY: {"seats": None, "projects": None},
+    Plan.FREE: {"seats": 3, "projects": 1},
+    Plan.STARTER: {"seats": 5, "projects": 10},
+    Plan.TEAM: {"seats": 25, "projects": None},
 }
 
 
 def max_seats(plan: str) -> int | None:
     """Seat ceiling for a plan. `None` means unlimited."""
-    return _SEAT_LIMITS[plan]
+    return _LIMITS[plan]["seats"]
+
+
+def max_projects(plan: str) -> int | None:
+    """Project ceiling for an organization's plan. `None` means unlimited."""
+    return _LIMITS[plan]["projects"]

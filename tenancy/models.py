@@ -8,6 +8,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.db import models, transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
@@ -17,8 +18,16 @@ INVITATION_DEFAULT_TTL = timedelta(days=7)
 
 
 class Plan(models.TextChoices):
-    """Subscription plan, controlling an organization's seat ceiling."""
+    """
+    Subscription plan, controlling what an account and its organizations may
+    hold. The ceilings themselves live in `tenancy.capabilities`.
+
+    COMMUNITY is unlimited and is what a self-hosted install runs on. FREE is
+    the entry tier of a hosted deployment, and is deliberately *not* the same
+    thing: an operator running this themselves is not a free customer.
+    """
     COMMUNITY = "COMMUNITY", "Community"
+    FREE = "FREE", "Free"
     STARTER = "STARTER", "Starter"
     TEAM = "TEAM", "Team"
 
@@ -60,11 +69,27 @@ class EnvironmentRole(models.TextChoices):
     VIEWER = "VIEWER", "Viewer"
 
 
+def default_organization_plan():
+    """
+    Read at instance-creation time, not at import.
+
+    A module-level default would freeze whatever DEFAULT_ORGANIZATION_PLAN was
+    when this module first loaded, which makes the setting untestable and makes
+    a deployment's own value depend on import order.
+    """
+    plan = settings.DEFAULT_ORGANIZATION_PLAN
+    if plan not in Plan.values:
+        raise ImproperlyConfigured(
+            f"DEFAULT_ORGANIZATION_PLAN must be one of {', '.join(Plan.values)}, not {plan!r}."
+        )
+    return plan
+
+
 class Organization(models.Model):
     """The top of the tenancy hierarchy."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-    plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.COMMUNITY)
+    plan = models.CharField(max_length=20, choices=Plan.choices, default=default_organization_plan)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
