@@ -866,11 +866,12 @@ Filters: `/sdk-registrations/?environment=&sdk_type=&version=`,
 `/evaluations/?flag=&environment=&result=true|false`.
 
 Each SDK registers under its own `sdk_type`, so one environment can hold
-`REACT`, `VUE`, `SOLID` and `SVELTE` rows at once. `SDKType` declares none of
-those four yet and Django does not validate choices on save, so they are
-stored and returned as sent — filter by the literal value. Declaring them is
-[open work](https://github.com/basb7/flagward-sdk-js); nothing needs to change
-in an SDK when it lands.
+`REACT`, `VUE`, `SOLID` and `SVELTE` rows at once. `SDKType` declares all of
+them, but that declaration is not what admits them: Django applies `choices`
+only in `full_clean()`, which the register endpoint never calls. An adapter
+can therefore publish a new name and start reporting before this list learns
+it — which is how those four arrived — and an unrecognised type is stored and
+returned as sent. Filter by the literal value either way.
 
 ### Analytics
 

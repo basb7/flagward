@@ -467,7 +467,14 @@ export const overridesApi = {
 };
 
 // SDK Registrations API (read-only: written by the SDK surface)
-export type SDKType = 'PYTHON' | 'JAVASCRIPT' | 'GO';
+export type SDKType =
+  | 'PYTHON'
+  | 'JAVASCRIPT'
+  | 'GO'
+  | 'REACT'
+  | 'VUE'
+  | 'SOLID'
+  | 'SVELTE';
 
 export interface SDKRegistration {
   id: string;
