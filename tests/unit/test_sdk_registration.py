@@ -8,6 +8,35 @@ from core_flags.models import Environment
 from sdk_api.models import SDKRegistration, SDKType
 
 
+class TestSDKTypeCoversThePublishedAdapters:
+    """
+    Every published SDK names itself when it registers, and the dashboard
+    groups by that name. `@flagward/core` sends JAVASCRIPT by default and each
+    framework adapter overrides it with its own, so a value missing from this
+    enum is a package already installed somewhere that the dashboard cannot
+    label.
+
+    Nothing enforces the enum at the API boundary: `sdk_register` writes
+    whatever string arrives, because Django applies `choices` only in
+    `full_clean()` and `update_or_create` never calls it. That is why an
+    adapter can ship ahead of the backend -- and why this list is a claim
+    about what the product supports rather than a gate.
+
+    The values below come from outside this repository: they are what the
+    published packages actually send. That is what keeps this from restating
+    the enum back to itself -- renaming REACT here would break apps already
+    installed, and this is what says so.
+    """
+
+    @pytest.mark.parametrize(
+        "sdk_type",
+        ["JAVASCRIPT", "REACT", "VUE", "SOLID", "SVELTE"],
+    )
+    def test_a_published_javascript_adapter_has_a_type(self, sdk_type):
+        """The value the adapter sends is one this enum recognises."""
+        assert sdk_type in SDKType.values
+
+
 @pytest.mark.django_db
 class TestSDKRegistrationUniqueness:
     """A registration is an inventory row: one per environment and SDK type."""

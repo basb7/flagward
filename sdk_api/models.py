@@ -9,10 +9,28 @@ from core_flags.models import Environment, FeatureFlag
 
 
 class SDKType(models.TextChoices):
-    """SDK type enumeration."""
+    """
+    What a registering SDK calls itself.
+
+    `@flagward/core` sends JAVASCRIPT and each framework adapter overrides it
+    with its own name, so the dashboard can tell a React app from a Svelte one
+    inside the same environment -- the uniqueness constraint below is on
+    (environment, sdk_type), which is what makes those separate inventory rows
+    rather than one row fighting over a version string.
+
+    `sdk_register` does not check this enum: Django applies `choices` only in
+    `full_clean()`, and `update_or_create` never calls it. An adapter can
+    therefore ship its name before this list learns it, which is exactly how
+    REACT, VUE, SOLID and SVELTE were already arriving. What the list decides
+    is what the product claims to support, not what the endpoint accepts.
+    """
     PYTHON = "PYTHON", "Python"
     JAVASCRIPT = "JAVASCRIPT", "JavaScript"
     GO = "GO", "Go"
+    REACT = "REACT", "React"
+    VUE = "VUE", "Vue"
+    SOLID = "SOLID", "Solid"
+    SVELTE = "SVELTE", "Svelte"
 
 
 class SDKRegistration(models.Model):
