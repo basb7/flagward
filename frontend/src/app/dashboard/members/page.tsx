@@ -11,6 +11,7 @@ import {
   UserMinus,
   UserPlus,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -61,7 +62,7 @@ import {
   type ProjectRole,
   projectMembershipsApi,
 } from '@/lib/api';
-import { errorCopy } from '@/lib/error-copy';
+import { useErrorCopy } from '@/lib/error-copy';
 import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 import { formatRelativeTime } from '@/lib/utils';
@@ -74,18 +75,6 @@ import { formatRelativeTime } from '@/lib/utils';
  * (design D10) is wired against the exact function that enforces access, so
  * what this screen shows is provably what saving would actually grant.
  */
-
-const ORG_ROLE_OPTIONS: { value: OrganizationRole; label: string }[] = [
-  { value: 'USER', label: 'User — org.view only, nothing about projects' },
-  { value: 'ADMIN', label: 'Admin — full key to the account' },
-];
-
-const GRANT_ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
-  { value: 'VIEWER', label: 'Viewer' },
-  { value: 'OPERATOR', label: 'Operator' },
-  { value: 'EDITOR', label: 'Editor' },
-  { value: 'ADMIN', label: 'Admin' },
-];
 
 type GrantLevel = 'project' | 'environment';
 
@@ -103,7 +92,27 @@ interface GrantForm {
 }
 
 export default function MembersPage() {
+  const t = useTranslations('membersPage');
   const { success, error: showError } = useToast();
+  const errorCopy = useErrorCopy();
+
+  // Translated labels can only be read inside the component, unlike the raw
+  // `value`s below (which are the backend's role enums and stay untranslated)
+  // -- see the same reasoning on `TABS` in `dashboard-nav.tsx` and `OPERATORS`
+  // in `flags/[id]/rules/page.tsx`. Render-only, like both of those, so no
+  // memoization: neither array is read from a `useCallback`/`useEffect`/
+  // `useMemo` dependency array anywhere in this file.
+  const ORG_ROLE_OPTIONS: { value: OrganizationRole; label: string }[] = [
+    { value: 'USER', label: t('orgRoleOptionUser') },
+    { value: 'ADMIN', label: t('orgRoleOptionAdmin') },
+  ];
+
+  const GRANT_ROLE_OPTIONS: { value: ProjectRole; label: string }[] = [
+    { value: 'VIEWER', label: t('grantRoleOptionViewer') },
+    { value: 'OPERATOR', label: t('grantRoleOptionOperator') },
+    { value: 'EDITOR', label: t('grantRoleOptionEditor') },
+    { value: 'ADMIN', label: t('grantRoleOptionAdmin') },
+  ];
   const {
     currentOrganization,
     projects,
@@ -450,7 +459,7 @@ export default function MembersPage() {
       loadInvitations();
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : 'Failed to create invitation',
+        err instanceof Error ? err.message : t('createInviteErrorFallback'),
       );
     } finally {
       setIsCreatingInvite(false);
@@ -462,9 +471,9 @@ export default function MembersPage() {
     const link = createdInvite.link;
     try {
       await navigator.clipboard.writeText(link);
-      success('Invitation link copied');
+      success(t('inviteLinkCopiedToast'));
     } catch {
-      showError('Could not copy automatically -- select and copy it manually');
+      showError(t('copyLinkErrorToast'));
     }
   };
 
@@ -473,12 +482,12 @@ export default function MembersPage() {
     setIsRevokingInvitation(true);
     try {
       await invitationsApi.revoke(invitationToRevoke.id);
-      success('Invitation revoked');
+      success(t('revokeInvitationSuccessToast'));
       setInvitationToRevoke(null);
       loadInvitations();
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : 'Failed to revoke invitation',
+        err instanceof Error ? err.message : t('revokeInvitationErrorFallback'),
       );
     } finally {
       setIsRevokingInvitation(false);
@@ -525,7 +534,7 @@ export default function MembersPage() {
       setPreviewResult(response.environments);
       setPreviewedSignature(currentSignature);
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to preview');
+      showError(err instanceof Error ? err.message : t('previewErrorFallback'));
     } finally {
       setIsPreviewing(false);
     }
@@ -569,13 +578,17 @@ export default function MembersPage() {
         });
       }
       success(
-        `${existingMembershipId ? 'Updated' : 'Granted'} ${grantForm.role} for ${activeMember.username}`,
+        t('grantSuccessToast', {
+          action: existingMembershipId ? 'updated' : 'granted',
+          role: grantForm.role,
+          username: activeMember.username,
+        }),
       );
       setIsGrantDialogOpen(false);
       loadProjectGrants();
       loadOrgWideGrants();
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to grant role');
+      showError(err instanceof Error ? err.message : t('grantErrorFallback'));
     } finally {
       setIsSavingGrant(false);
     }
@@ -592,11 +605,18 @@ export default function MembersPage() {
       } else {
         await environmentMembershipsApi.remove(row.id);
       }
-      success(`Revoked ${row.level.toLowerCase()} access for ${row.username}`);
+      success(
+        t('revokeGrantSuccessToast', {
+          level: row.level.toLowerCase(),
+          username: row.username,
+        }),
+      );
       loadProjectGrants();
       loadOrgWideGrants();
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to revoke role');
+      showError(
+        err instanceof Error ? err.message : t('revokeGrantErrorFallback'),
+      );
     }
   };
 
@@ -605,7 +625,9 @@ export default function MembersPage() {
     setIsRemovingMember(true);
     try {
       await organizationMembershipsApi.remove(memberToRemove.id);
-      success(`Removed ${memberToRemove.username} from the organization`);
+      success(
+        t('removeMemberSuccessToast', { username: memberToRemove.username }),
+      );
       setMemberToRemove(null);
       // Removal cascades (#23): every project and environment grant this
       // person held in this organization is revoked with them, so the grants
@@ -620,7 +642,7 @@ export default function MembersPage() {
       showError(
         err instanceof Error
           ? errorCopy(err.message)
-          : 'Failed to remove member',
+          : t('removeMemberErrorFallback'),
       );
     } finally {
       setIsRemovingMember(false);
@@ -639,8 +661,8 @@ export default function MembersPage() {
     return (
       <EmptyState
         icon={UserPlus}
-        title="No organization"
-        description="No organization is visible for your account yet."
+        title={t('noOrganizationTitle')}
+        description={t('noOrganizationDescription')}
       />
     );
   }
@@ -648,8 +670,10 @@ export default function MembersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Members"
-        description={`Manage who has access to ${currentOrganization.name} and what they can do.`}
+        title={t('pageTitle')}
+        description={t('pageDescription', {
+          organizationName: currentOrganization.name,
+        })}
         action={
           <Dialog
             open={isInviteOpen}
@@ -663,20 +687,21 @@ export default function MembersPage() {
           >
             <DialogTrigger render={<Button variant="outline" />}>
               <Mail className="mr-2 h-4 w-4" />
-              Invite by link
+              {t('inviteByLinkButton')}
             </DialogTrigger>
             <DialogContent>
               {createdInvite ? (
                 <>
                   <DialogHeader>
-                    <DialogTitle>Invitation link created</DialogTitle>
+                    <DialogTitle>{t('inviteLinkCreatedTitle')}</DialogTitle>
                     <DialogDescription>
-                      This link is shown once and can never be retrieved again
-                      -- copy it now and send it to the person you're inviting.
+                      {t('inviteLinkCreatedDescription')}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-2">
-                    <Label htmlFor="invite-link">Single-use link</Label>
+                    <Label htmlFor="invite-link">
+                      {t('singleUseLinkLabel')}
+                    </Label>
                     <div className="flex gap-2">
                       <Input
                         id="invite-link"
@@ -694,33 +719,40 @@ export default function MembersPage() {
                       </Button>
                     </div>
                     <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      Role:{' '}
-                      <Badge
-                        variant={
-                          createdInvite.role === 'ADMIN' ? 'warning' : 'muted'
-                        }
-                      >
-                        {createdInvite.role}
-                      </Badge>
-                      -- expires {formatRelativeTime(createdInvite.expires_at)}.
+                      {t.rich('inviteRoleLine', {
+                        role: () => (
+                          <Badge
+                            variant={
+                              createdInvite.role === 'ADMIN'
+                                ? 'warning'
+                                : 'muted'
+                            }
+                          >
+                            {createdInvite.role}
+                          </Badge>
+                        ),
+                        expiresAt: formatRelativeTime(createdInvite.expires_at),
+                      })}
                     </p>
                   </div>
                   <DialogFooter>
-                    <Button onClick={closeInviteDialog}>Done</Button>
+                    <Button onClick={closeInviteDialog}>
+                      {t('doneButton')}
+                    </Button>
                   </DialogFooter>
                 </>
               ) : (
                 <>
                   <DialogHeader>
-                    <DialogTitle>Invite by link</DialogTitle>
+                    <DialogTitle>{t('inviteByLinkDialogTitle')}</DialogTitle>
                     <DialogDescription>
-                      Creates a single-use link. Whoever opens it confirms and
-                      joins with the role you pick here -- the plaintext token
-                      is only ever shown once, right after you create it.
+                      {t('inviteByLinkDialogDescription')}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-2">
-                    <Label htmlFor="invite-role">Organization role</Label>
+                    <Label htmlFor="invite-role">
+                      {t('organizationRoleLabel')}
+                    </Label>
                     <select
                       id="invite-role"
                       className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
@@ -738,7 +770,7 @@ export default function MembersPage() {
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={closeInviteDialog}>
-                      Cancel
+                      {t('cancelButton')}
                     </Button>
                     <Button
                       onClick={handleCreateInvite}
@@ -747,7 +779,7 @@ export default function MembersPage() {
                       {isCreatingInvite ? (
                         <Spinner size="sm" className="mr-2" />
                       ) : null}
-                      Create link
+                      {t('createLinkButton')}
                     </Button>
                   </DialogFooter>
                 </>
@@ -761,21 +793,21 @@ export default function MembersPage() {
         <CardContent className="flex items-start gap-2 py-4 text-sm text-muted-foreground">
           <Info className="mt-0.5 size-4 shrink-0 text-info" />
           <p>
-            Roles at each level only ever <strong>add</strong> capabilities — a
-            project or environment grant can never take away what a higher level
-            already gives. There is no "remove access" toggle here on purpose:
-            to reduce what someone can do, narrow the grant at the level it came
-            from, not carve out an exception underneath a wider one.
+            {t.rich('accessInfoCallout', {
+              strong: (chunks) => <strong>{chunks}</strong>,
+            })}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Organization members</CardTitle>
+          <CardTitle>{t('orgMembersCardTitle')}</CardTitle>
           <CardDescription>
-            {orgMembers.length} member(s) of {currentOrganization.name}. Grant a
-            project or environment role to give access beyond {`org.view`}.
+            {t('orgMembersCardDescription', {
+              count: orgMembers.length,
+              organizationName: currentOrganization.name,
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -786,18 +818,18 @@ export default function MembersPage() {
           ) : orgMembers.length === 0 ? (
             <EmptyState
               icon={UserPlus}
-              title="No members yet"
-              description="Add a member to start granting project and environment roles."
+              title={t('noMembersTitle')}
+              description={t('noMembersDescription')}
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="border-border">
                   <TableHead className="text-muted-foreground">
-                    Username
+                    {t('usernameHeader')}
                   </TableHead>
                   <TableHead className="text-muted-foreground">
-                    Organization role
+                    {t('organizationRoleHeader')}
                   </TableHead>
                   <TableHead className="w-[260px]" />
                 </TableRow>
@@ -811,7 +843,7 @@ export default function MembersPage() {
                         {membersWithoutAccess.has(member.id) ? (
                           <Badge variant="warning">
                             <Lock className="size-3" />
-                            No project access yet
+                            {t('noProjectAccessBadge')}
                           </Badge>
                         ) : null}
                       </div>
@@ -849,7 +881,7 @@ export default function MembersPage() {
                             onClick={() => openGrantDialog(member)}
                           >
                             <Plus className="mr-1 h-3.5 w-3.5" />
-                            Grant role
+                            {t('grantRoleButton')}
                           </Button>
                         )}
                         {member.role === 'ADMIN' &&
@@ -861,7 +893,7 @@ export default function MembersPage() {
                             onClick={() => setMemberToRemove(member)}
                           >
                             <UserMinus className="mr-1 h-3.5 w-3.5" />
-                            Remove
+                            {t('removeMemberButton')}
                           </Button>
                         )}
                       </div>
@@ -876,11 +908,9 @@ export default function MembersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Pending invitations</CardTitle>
+          <CardTitle>{t('pendingInvitationsCardTitle')}</CardTitle>
           <CardDescription>
-            Single-use links waiting to be opened. Revoking one invalidates it
-            immediately. Accepted, expired and already-revoked invitations don't
-            show up here.
+            {t('pendingInvitationsCardDescription')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -891,19 +921,21 @@ export default function MembersPage() {
           ) : pendingInvitations.length === 0 ? (
             <EmptyState
               icon={Mail}
-              title="No pending invitations"
-              description="Invite someone by link from the button above."
+              title={t('noPendingInvitationsTitle')}
+              description={t('noPendingInvitationsDescription')}
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="border-border">
-                  <TableHead className="text-muted-foreground">Role</TableHead>
                   <TableHead className="text-muted-foreground">
-                    Invited by
+                    {t('roleHeader')}
                   </TableHead>
                   <TableHead className="text-muted-foreground">
-                    Expires
+                    {t('invitedByHeader')}
+                  </TableHead>
+                  <TableHead className="text-muted-foreground">
+                    {t('expiresHeader')}
                   </TableHead>
                   <TableHead className="w-[120px]" />
                 </TableRow>
@@ -921,7 +953,8 @@ export default function MembersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {invitation.created_by_username ?? 'Unknown'}
+                      {invitation.created_by_username ??
+                        t('unknownInviterFallback')}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatRelativeTime(invitation.expires_at)}
@@ -935,7 +968,7 @@ export default function MembersPage() {
                           onClick={() => setInvitationToRevoke(invitation)}
                         >
                           <Ban className="mr-1 h-3.5 w-3.5" />
-                          Revoke
+                          {t('revokeButton')}
                         </Button>
                       </div>
                     </TableCell>
@@ -950,22 +983,23 @@ export default function MembersPage() {
       <Card>
         <CardHeader>
           <CardTitle>
-            {currentProject
-              ? `Grants on ${currentProject.name}`
-              : 'Project and environment grants'}
+            {t('grantsCardTitle', {
+              hasProject: currentProject ? 'yes' : 'no',
+              projectName: currentProject?.name ?? '',
+            })}
           </CardTitle>
           <CardDescription>
-            {currentProject
-              ? 'Project and environment roles held on this project and its environments.'
-              : 'Select a project from the switcher above to see its grants.'}
+            {t('grantsCardDescription', {
+              hasProject: currentProject ? 'yes' : 'no',
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {!currentProject ? (
             <EmptyState
               icon={UserPlus}
-              title="No project selected"
-              description="Choose a project to view and grant its roles."
+              title={t('noProjectSelectedTitle')}
+              description={t('noProjectSelectedDescription')}
             />
           ) : isLoadingGrants ? (
             <div className="flex justify-center py-8">
@@ -974,19 +1008,25 @@ export default function MembersPage() {
           ) : grantRows.length === 0 ? (
             <EmptyState
               icon={UserPlus}
-              title="No grants yet"
-              description="Grant a project or environment role from the members table above."
+              title={t('noGrantsTitle')}
+              description={t('noGrantsDescription')}
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="border-border">
-                  <TableHead className="text-muted-foreground">User</TableHead>
-                  <TableHead className="text-muted-foreground">Level</TableHead>
                   <TableHead className="text-muted-foreground">
-                    Target
+                    {t('userHeader')}
                   </TableHead>
-                  <TableHead className="text-muted-foreground">Role</TableHead>
+                  <TableHead className="text-muted-foreground">
+                    {t('levelHeader')}
+                  </TableHead>
+                  <TableHead className="text-muted-foreground">
+                    {t('targetHeader')}
+                  </TableHead>
+                  <TableHead className="text-muted-foreground">
+                    {t('roleHeader')}
+                  </TableHead>
                   <TableHead className="w-[160px]" />
                 </TableRow>
               </TableHeader>
@@ -997,7 +1037,9 @@ export default function MembersPage() {
                       {grant.username}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {grant.level}
+                      {grant.level === 'Project'
+                        ? t('levelCellProject')
+                        : t('levelCellEnvironment')}
                     </TableCell>
                     <TableCell className="text-foreground">
                       {grant.target}
@@ -1025,7 +1067,7 @@ export default function MembersPage() {
                             });
                           }}
                         >
-                          Change role
+                          {t('changeRoleButton')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1033,7 +1075,7 @@ export default function MembersPage() {
                           className="text-destructive hover:text-destructive"
                           onClick={() => handleRevoke(grant)}
                         >
-                          Revoke
+                          {t('revokeButton')}
                         </Button>
                       </div>
                     </TableCell>
@@ -1049,19 +1091,20 @@ export default function MembersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {existingMembershipId ? 'Change role for ' : 'Grant a role to '}
-              {activeMember?.username ?? 'this member'}
+              {t('grantDialogTitle', {
+                action: existingMembershipId ? 'change' : 'grant',
+                username: activeMember?.username ?? t('thisMemberFallback'),
+              })}
             </DialogTitle>
             <DialogDescription>
-              {existingMembershipId
-                ? 'This changes the role already held at this level and target -- it does not create a second grant.'
-                : 'This adds a role — it can never remove what a higher level already grants.'}{' '}
-              Preview the resolved capabilities before confirming.
+              {t('grantDialogDescription', {
+                context: existingMembershipId ? 'existing' : 'new',
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="grant-level">Level</Label>
+              <Label htmlFor="grant-level">{t('levelLabel')}</Label>
               <select
                 id="grant-level"
                 className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
@@ -1079,15 +1122,22 @@ export default function MembersPage() {
                 }}
               >
                 <option value="project">
-                  Project ({currentProject?.name ?? 'current project'})
+                  {t('grantLevelSelectProjectOption', {
+                    projectName:
+                      currentProject?.name ?? t('currentProjectFallback'),
+                  })}
                 </option>
-                <option value="environment">Environment</option>
+                <option value="environment">
+                  {t('grantLevelSelectEnvironmentOption')}
+                </option>
               </select>
             </div>
 
             {grantForm.level === 'environment' ? (
               <div className="space-y-2">
-                <Label htmlFor="grant-target">Environment</Label>
+                <Label htmlFor="grant-target">
+                  {t('grantTargetEnvironmentLabel')}
+                </Label>
                 <select
                   id="grant-target"
                   className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
@@ -1098,7 +1148,7 @@ export default function MembersPage() {
                     setPreviewedSignature(null);
                   }}
                 >
-                  <option value="">Select environment</option>
+                  <option value="">{t('selectEnvironmentOption')}</option>
                   {environments.map((env) => (
                     <option key={env.id} value={env.id}>
                       {env.name}
@@ -1109,7 +1159,7 @@ export default function MembersPage() {
             ) : null}
 
             <div className="space-y-2">
-              <Label htmlFor="grant-role">Role</Label>
+              <Label htmlFor="grant-role">{t('roleLabel')}</Label>
               <select
                 id="grant-role"
                 className="w-full rounded-md border border-border bg-muted p-2 text-foreground"
@@ -1134,7 +1184,7 @@ export default function MembersPage() {
             <div className="space-y-2 rounded-md border border-border bg-card p-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-foreground">
-                  Effective capabilities preview
+                  {t('previewSectionTitle')}
                 </p>
                 <Button
                   variant="outline"
@@ -1146,17 +1196,16 @@ export default function MembersPage() {
                   onClick={handlePreview}
                 >
                   {isPreviewing ? <Spinner size="sm" className="mr-1" /> : null}
-                  Preview
+                  {t('previewButton')}
                 </Button>
               </div>
               {previewResult === null ? (
                 <p className="text-xs text-muted-foreground">
-                  Run the preview to see exactly what this grant would give, per
-                  environment, before saving it.
+                  {t('previewHintBeforeRun')}
                 </p>
               ) : previewResult.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  No environments to show for this grant.
+                  {t('previewNoEnvironments')}
                 </p>
               ) : (
                 <ul className="space-y-1.5">
@@ -1168,7 +1217,7 @@ export default function MembersPage() {
                       {': '}
                       {env.capabilities.length === 0 ? (
                         <span className="text-muted-foreground">
-                          gains nothing new
+                          {t('previewGainsNothing')}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">
@@ -1186,7 +1235,7 @@ export default function MembersPage() {
               variant="outline"
               onClick={() => setIsGrantDialogOpen(false)}
             >
-              Cancel
+              {t('cancelButton')}
             </Button>
             <Button
               onClick={handleConfirmGrant}
@@ -1197,7 +1246,9 @@ export default function MembersPage() {
               }
             >
               {isSavingGrant ? <Spinner size="sm" className="mr-2" /> : null}
-              {existingMembershipId ? 'Save role' : 'Confirm grant'}
+              {t('confirmGrantButton', {
+                hasExistingGrant: existingMembershipId ? 'yes' : 'no',
+              })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1211,11 +1262,15 @@ export default function MembersPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove {memberToRemove?.username}?</DialogTitle>
+            <DialogTitle>
+              {t('removeMemberDialogTitle', {
+                username: memberToRemove?.username ?? '',
+              })}
+            </DialogTitle>
             <DialogDescription>
-              This revokes their membership in {currentOrganization.name}. Every
-              project and environment grant they hold in this organization is
-              revoked with them -- this cannot be undone.
+              {t('removeMemberDialogDescription', {
+                organizationName: currentOrganization.name,
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1224,7 +1279,7 @@ export default function MembersPage() {
               onClick={() => setMemberToRemove(null)}
               disabled={isRemovingMember}
             >
-              Cancel
+              {t('cancelButton')}
             </Button>
             <Button
               variant="destructive"
@@ -1232,7 +1287,7 @@ export default function MembersPage() {
               disabled={isRemovingMember}
             >
               {isRemovingMember ? <Spinner size="sm" className="mr-2" /> : null}
-              Remove member
+              {t('removeMemberConfirmButton')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1246,10 +1301,11 @@ export default function MembersPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Revoke this invitation?</DialogTitle>
+            <DialogTitle>{t('revokeInvitationDialogTitle')}</DialogTitle>
             <DialogDescription>
-              The link stops working immediately. Anyone who already has it can
-              no longer use it to join {currentOrganization.name}.
+              {t('revokeInvitationDialogDescription', {
+                organizationName: currentOrganization.name,
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1258,7 +1314,7 @@ export default function MembersPage() {
               onClick={() => setInvitationToRevoke(null)}
               disabled={isRevokingInvitation}
             >
-              Cancel
+              {t('cancelButton')}
             </Button>
             <Button
               variant="destructive"
@@ -1268,7 +1324,7 @@ export default function MembersPage() {
               {isRevokingInvitation ? (
                 <Spinner size="sm" className="mr-2" />
               ) : null}
-              Revoke invitation
+              {t('revokeInvitationConfirmButton')}
             </Button>
           </DialogFooter>
         </DialogContent>

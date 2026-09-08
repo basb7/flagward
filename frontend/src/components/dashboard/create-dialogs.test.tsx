@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateEnvironmentDialog } from '@/components/dashboard/create-environment-dialog';
 import { CreateOrganizationDialog } from '@/components/dashboard/create-organization-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
 import { Button } from '@/components/ui/button';
+import { renderWithIntl } from '@/test/i18n';
 
 const success = vi.fn();
 const showError = vi.fn();
@@ -109,7 +110,7 @@ const createButton = () => screen.getByRole('button', { name: 'Create' });
 for (const testCase of CASES) {
   describe(testCase.label, () => {
     async function open(onCreated = vi.fn()) {
-      render(testCase.render(onCreated));
+      renderWithIntl(testCase.render(onCreated));
       fireEvent.click(screen.getByRole('button', { name: /^New / }));
       await waitFor(() =>
         expect(screen.getByLabelText(testCase.fieldLabel)).toBeInTheDocument(),
@@ -192,7 +193,7 @@ describe('the create dialogs as a group', () => {
     // Projects and environments used to make the person invent a key. They
     // no longer do, and re-adding that field is the regression this catches.
     for (const testCase of CASES) {
-      const { unmount } = render(testCase.render(vi.fn()));
+      const { unmount } = renderWithIntl(testCase.render(vi.fn()));
       fireEvent.click(screen.getByRole('button', { name: /^New / }));
       await waitFor(() =>
         expect(screen.getByLabelText('Name')).toBeInTheDocument(),

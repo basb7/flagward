@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Suspense, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +25,7 @@ import { safeNextPath } from '@/lib/utils';
 // node_modules/next/dist/docs/.../use-search-params.md). The form is split
 // out so the Suspense boundary wraps only the part that needs it.
 function LoginForm() {
+  const t = useTranslations('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -77,10 +79,10 @@ function LoginForm() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-foreground">
-            Flagward
+            {t('title')}
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground">
-            Enter your credentials to access the dashboard
+            {t('description')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -95,12 +97,12 @@ function LoginForm() {
             )}
             <div className="space-y-2">
               <Label htmlFor="username" className="text-muted-foreground">
-                Username
+                {t('usernameLabel')}
               </Label>
               <Input
                 id="username"
                 type="text"
-                placeholder="Enter your username"
+                placeholder={t('usernamePlaceholder')}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -109,21 +111,21 @@ function LoginForm() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password" className="text-muted-foreground">
-                  Password
+                  {t('passwordLabel')}
                 </Label>
                 {passwordResetEnabled && (
                   <Link
                     href="/forgot-password"
                     className="text-xs text-foreground underline-offset-4 hover:underline"
                   >
-                    Forgot password?
+                    {t('forgotPassword')}
                   </Link>
                 )}
               </div>
               <Input
                 id="password"
                 type="password"
-                placeholder="Enter your password"
+                placeholder={t('passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -132,15 +134,15 @@ function LoginForm() {
           </CardContent>
           <CardFooter className="flex flex-col gap-3 pt-4">
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Signing in...' : 'Sign in'}
+              {isLoading ? t('signingIn') : t('signIn')}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
-              Don&apos;t have an account?{' '}
+              {t('noAccount')}{' '}
               <Link
                 href={registerHref}
                 className="text-foreground underline-offset-4 hover:underline"
               >
-                Create one
+                {t('createAccount')}
               </Link>
             </p>
           </CardFooter>

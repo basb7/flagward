@@ -1,5 +1,6 @@
 'use client';
 
+import { FloatingLanguageSwitcher } from '@/components/ui/floating-language-switcher';
 import { AuthProvider } from '@/lib/auth-context';
 
 export default function InviteLayout({
@@ -7,5 +8,10 @@ export default function InviteLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <AuthProvider>{children}</AuthProvider>;
+  return (
+    <AuthProvider>
+      {children}
+      <FloatingLanguageSwitcher />
+    </AuthProvider>
+  );
 }

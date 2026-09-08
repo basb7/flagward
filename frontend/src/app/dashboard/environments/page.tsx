@@ -10,6 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { CreateEnvironmentDialog } from '@/components/dashboard/create-environment-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
@@ -38,6 +39,7 @@ import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 
 export default function EnvironmentsPage() {
+  const t = useTranslations('environmentsPage');
   const { success, error: showError } = useToast();
   const { user } = useAuth();
   const {
@@ -78,7 +80,7 @@ export default function EnvironmentsPage() {
   const copyApiKey = (apiKey: string, id: string) => {
     navigator.clipboard.writeText(apiKey);
     setCopiedId(id);
-    success('API key copied to clipboard');
+    success(t('apiKeyCopiedToast'));
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -86,11 +88,9 @@ export default function EnvironmentsPage() {
     try {
       await environmentsApi.delete(envId);
       loadEnvironments();
-      success('Environment deleted successfully');
+      success(t('deletedToast'));
     } catch (err) {
-      showError(
-        err instanceof Error ? err.message : 'Failed to delete environment',
-      );
+      showError(err instanceof Error ? err.message : t('deleteErrorFallback'));
     }
   };
 
@@ -107,10 +107,12 @@ export default function EnvironmentsPage() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <EmptyState
           icon={Building2}
-          title="Create your organization first"
-          description="Environments live inside a project, and a project lives inside an organization."
+          title={t('createOrganizationFirstTitle')}
+          description={t('createOrganizationFirstDescription')}
           action={
-            <Button render={<Link href="/dashboard" />}>Go to Overview</Button>
+            <Button render={<Link href="/dashboard" />}>
+              {t('goToOverview')}
+            </Button>
           }
         />
       </div>
@@ -133,8 +135,8 @@ export default function EnvironmentsPage() {
         {canCreateProject ? (
           <EmptyState
             icon={Layers}
-            title="Create a project first"
-            description="Environments, flags and API keys all live inside a project."
+            title={t('createProjectFirstTitle')}
+            description={t('createProjectFirstDescription')}
             action={
               <CreateProjectDialog
                 organizationId={currentOrganization.id}
@@ -142,7 +144,7 @@ export default function EnvironmentsPage() {
                 triggerContent={
                   <>
                     <Plus className="mr-2 h-4 w-4" />
-                    Create project
+                    {t('createProjectButton')}
                   </>
                 }
                 onCreated={(project) => {
@@ -155,8 +157,10 @@ export default function EnvironmentsPage() {
         ) : (
           <EmptyState
             icon={Lock}
-            title="No project access yet"
-            description={`You have not been given access to any project in ${currentOrganization.name}. Ask an admin of this organization to grant you one.`}
+            title={t('noProjectAccessTitle')}
+            description={t('noProjectAccessDescription', {
+              organizationName: currentOrganization.name,
+            })}
           />
         )}
       </div>
@@ -174,8 +178,8 @@ export default function EnvironmentsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Environments"
-        description="Manage your environments"
+        title={t('pageTitle')}
+        description={t('pageDescription')}
         action={
           <CreateEnvironmentDialog
             projectId={currentProject.id}
@@ -183,7 +187,7 @@ export default function EnvironmentsPage() {
             triggerContent={
               <>
                 <Plus className="mr-2 h-4 w-4" />
-                New Environment
+                {t('newEnvironmentButton')}
               </>
             }
             onCreated={loadEnvironments}
@@ -193,17 +197,19 @@ export default function EnvironmentsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-foreground">All Environments</CardTitle>
+          <CardTitle className="text-foreground">
+            {t('allEnvironmentsTitle')}
+          </CardTitle>
           <CardDescription className="text-muted-foreground">
-            {environments.length} environment(s) configured
+            {t('environmentsCountDescription', { count: environments.length })}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {environments.length === 0 ? (
             <EmptyState
               icon={Layers}
-              title="No environments yet"
-              description="Create one to get an API key and start serving flags."
+              title={t('noEnvironmentsTitle')}
+              description={t('noEnvironmentsDescription')}
               action={
                 <CreateEnvironmentDialog
                   projectId={currentProject.id}
@@ -211,7 +217,7 @@ export default function EnvironmentsPage() {
                   triggerContent={
                     <>
                       <Plus className="mr-2 h-4 w-4" />
-                      Create environment
+                      {t('createEnvironmentButton')}
                     </>
                   }
                   onCreated={loadEnvironments}
@@ -222,13 +228,17 @@ export default function EnvironmentsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="border-border">
-                  <TableHead className="text-muted-foreground">Name</TableHead>
-                  <TableHead className="text-muted-foreground">Key</TableHead>
                   <TableHead className="text-muted-foreground">
-                    API Key
+                    {t('nameHeader')}
+                  </TableHead>
+                  <TableHead className="text-muted-foreground">
+                    {t('keyHeader')}
+                  </TableHead>
+                  <TableHead className="text-muted-foreground">
+                    {t('apiKeyHeader')}
                   </TableHead>
                   <TableHead className="text-muted-foreground w-[100px]">
-                    Actions
+                    {t('actionsHeader')}
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -260,7 +270,9 @@ export default function EnvironmentsPage() {
                           variant="ghost"
                           size="icon"
                           onClick={() => copyApiKey(env.api_key, env.id)}
-                          aria-label={`Copy API key for ${env.name}`}
+                          aria-label={t('copyApiKeyLabel', {
+                            name: env.name,
+                          })}
                           className="text-muted-foreground"
                         >
                           {copiedId === env.id ? (
@@ -277,7 +289,9 @@ export default function EnvironmentsPage() {
                           variant="ghost"
                           size="icon"
                           onClick={() => deleteEnvironment(env.id)}
-                          aria-label={`Delete environment ${env.name}`}
+                          aria-label={t('deleteEnvironmentLabel', {
+                            name: env.name,
+                          })}
                           className="text-muted-foreground hover:text-destructive hover:bg-muted"
                         >
                           <Trash2 className="h-4 w-4" />

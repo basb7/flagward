@@ -2,6 +2,7 @@
 
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -42,24 +43,28 @@ import {
 } from '@/lib/api';
 import { useToast } from '@/lib/toast-context';
 
-const OPERATORS = [
-  { value: 'EQUALS', label: 'Equals' },
-  { value: 'NOT_EQUALS', label: 'Not Equals' },
-  { value: 'GREATER_THAN', label: 'Greater Than' },
-  { value: 'LESS_THAN', label: 'Less Than' },
-  { value: 'IN_LIST', label: 'In List' },
-  { value: 'CONTAINS', label: 'Contains' },
-];
-
-const getOperatorLabel = (value: string) => {
-  return OPERATORS.find((op) => op.value === value)?.label || value;
-};
-
 export default function RulesPage() {
+  const t = useTranslations('flagRulesPage');
   const params = useParams();
   const router = useRouter();
   const { success, error: showError } = useToast();
   const flagId = params.id as string;
+
+  // Translated labels can only be read inside the component, unlike the raw
+  // `value`s below (which are the backend's enum and stay untranslated) --
+  // see the same reasoning on `TABS` in `dashboard-nav.tsx`.
+  const OPERATORS = [
+    { value: 'EQUALS', label: t('operatorEquals') },
+    { value: 'NOT_EQUALS', label: t('operatorNotEquals') },
+    { value: 'GREATER_THAN', label: t('operatorGreaterThan') },
+    { value: 'LESS_THAN', label: t('operatorLessThan') },
+    { value: 'IN_LIST', label: t('operatorInList') },
+    { value: 'CONTAINS', label: t('operatorContains') },
+  ];
+
+  const getOperatorLabel = (value: string) => {
+    return OPERATORS.find((op) => op.value === value)?.label || value;
+  };
 
   const [flag, setFlag] = useState<FeatureFlag | null>(null);
   const [rules, setRules] = useState<StrategyRule[]>([]);
@@ -111,9 +116,11 @@ export default function RulesPage() {
       setIsRuleDialogOpen(false);
       setNewRule({ priority: 1, operator_logic: 'AND' });
       loadData();
-      success('Rule created successfully');
+      success(t('createRuleSuccessToast'));
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to create rule');
+      showError(
+        err instanceof Error ? err.message : t('createRuleErrorFallback'),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -123,9 +130,11 @@ export default function RulesPage() {
     try {
       await rulesApi.delete(ruleId);
       loadData();
-      success('Rule deleted successfully');
+      success(t('deleteRuleSuccessToast'));
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to delete rule');
+      showError(
+        err instanceof Error ? err.message : t('deleteRuleErrorFallback'),
+      );
     }
   };
 
@@ -170,7 +179,7 @@ export default function RulesPage() {
           operator: newCondition.operator,
           value: parsedValue,
         });
-        success('Condition updated successfully');
+        success(t('updateConditionSuccessToast'));
       } else if (selectedRule) {
         await conditionsApi.create({
           rule: selectedRule.id,
@@ -178,7 +187,7 @@ export default function RulesPage() {
           operator: newCondition.operator,
           value: parsedValue,
         });
-        success('Condition created successfully');
+        success(t('createConditionSuccessToast'));
       }
       setIsConditionDialogOpen(false);
       setEditingCondition(null);
@@ -186,7 +195,7 @@ export default function RulesPage() {
       loadData();
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : 'Failed to save condition',
+        err instanceof Error ? err.message : t('saveConditionErrorFallback'),
       );
     } finally {
       setIsSaving(false);
@@ -197,10 +206,10 @@ export default function RulesPage() {
     try {
       await conditionsApi.delete(conditionId);
       loadData();
-      success('Condition deleted successfully');
+      success(t('deleteConditionSuccessToast'));
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : 'Failed to delete condition',
+        err instanceof Error ? err.message : t('deleteConditionErrorFallback'),
       );
     }
   };
@@ -216,7 +225,7 @@ export default function RulesPage() {
   if (!flag) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        Flag not found
+        {t('flagNotFound')}
       </div>
     );
   }
@@ -228,39 +237,39 @@ export default function RulesPage() {
           variant="ghost"
           size="icon"
           onClick={() => router.push('/dashboard/flags')}
-          aria-label="Back to flags"
+          aria-label={t('backToFlagsLabel')}
           className="mt-1 text-muted-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <PageHeader
           className="flex-1"
-          title="Strategy Rules"
-          description={
-            <>
-              Configure targeting rules for{' '}
-              <span className="font-mono text-foreground">{flag.key}</span>
-            </>
-          }
+          title={t('pageTitle')}
+          description={t.rich('pageDescription', {
+            code: (chunks) => (
+              <span className="font-mono text-foreground">{chunks}</span>
+            ),
+            flagKey: flag.key,
+          })}
           action={
             <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
               <DialogTrigger render={<Button />}>
                 <Plus className="mr-2 h-4 w-4" />
-                New Rule
+                {t('newRuleButton')}
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle className="text-foreground">
-                    Create Strategy Rule
+                    {t('createRuleDialogTitle')}
                   </DialogTitle>
                   <DialogDescription className="text-muted-foreground">
-                    Add a new targeting rule for this flag.
+                    {t('createRuleDialogDescription')}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="priority" className="text-muted-foreground">
-                      Priority (lower = higher priority)
+                      {t('priorityLabel')}
                     </Label>
                     <Input
                       id="priority"
@@ -278,7 +287,7 @@ export default function RulesPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="operator" className="text-muted-foreground">
-                      Operator Logic
+                      {t('operatorLogicLabel')}
                     </Label>
                     <select
                       id="operator"
@@ -291,10 +300,8 @@ export default function RulesPage() {
                         })
                       }
                     >
-                      <option value="AND">
-                        AND (all conditions must match)
-                      </option>
-                      <option value="OR">OR (any condition can match)</option>
+                      <option value="AND">{t('operatorLogicAndOption')}</option>
+                      <option value="OR">{t('operatorLogicOrOption')}</option>
                     </select>
                   </div>
                 </div>
@@ -303,11 +310,11 @@ export default function RulesPage() {
                     variant="outline"
                     onClick={() => setIsRuleDialogOpen(false)}
                   >
-                    Cancel
+                    {t('cancelButton')}
                   </Button>
                   <Button onClick={handleCreateRule} disabled={isSaving}>
                     {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
-                    Create
+                    {t('createButton')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -319,7 +326,7 @@ export default function RulesPage() {
       {rules.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            No rules configured. Add a rule to start targeting users.
+            {t('noRulesConfigured')}
           </CardContent>
         </Card>
       ) : (
@@ -329,13 +336,15 @@ export default function RulesPage() {
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <div>
                   <CardTitle className="text-lg text-foreground">
-                    Rule #{rule.priority}
+                    {t('rulePriorityTitle', { priority: rule.priority })}
                     <span className="ml-2 text-sm font-normal text-muted-foreground">
                       ({rule.operator_logic})
                     </span>
                   </CardTitle>
                   <CardDescription className="text-muted-foreground">
-                    {rule.conditions.length} condition(s)
+                    {t('conditionsCountDescription', {
+                      count: rule.conditions.length,
+                    })}
                   </CardDescription>
                 </div>
                 <div className="flex space-x-2">
@@ -345,7 +354,7 @@ export default function RulesPage() {
                     onClick={() => handleAddCondition(rule)}
                   >
                     <Plus className="mr-1 h-4 w-4" />
-                    Condition
+                    {t('addConditionButton')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -360,20 +369,20 @@ export default function RulesPage() {
               <CardContent>
                 {rule.conditions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No conditions yet
+                    {t('noConditionsYet')}
                   </p>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow className="border-border">
                         <TableHead className="text-muted-foreground">
-                          Attribute
+                          {t('attributeHeader')}
                         </TableHead>
                         <TableHead className="text-muted-foreground">
-                          Operator
+                          {t('operatorHeader')}
                         </TableHead>
                         <TableHead className="text-muted-foreground">
-                          Value
+                          {t('valueHeader')}
                         </TableHead>
                         <TableHead className="text-muted-foreground w-[60px]"></TableHead>
                       </TableRow>
@@ -451,22 +460,26 @@ export default function RulesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-foreground">
-              {editingCondition ? 'Edit Condition' : 'Add Condition'}
+              {editingCondition
+                ? t('editConditionDialogTitle')
+                : t('addConditionDialogTitle')}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {editingCondition
-                ? 'Update the condition details.'
-                : `Add a condition to Rule #${selectedRule?.priority}`}
+                ? t('editConditionDialogDescription')
+                : t('addConditionDialogDescription', {
+                    priority: selectedRule?.priority ?? 0,
+                  })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="attribute" className="text-muted-foreground">
-                Attribute
+                {t('attributeLabel')}
               </Label>
               <Input
                 id="attribute"
-                placeholder="e.g., country, plan, user_id"
+                placeholder={t('attributePlaceholder')}
                 value={newCondition.attribute}
                 onChange={(e) =>
                   setNewCondition({
@@ -478,7 +491,7 @@ export default function RulesPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="operator" className="text-muted-foreground">
-                Operator
+                {t('operatorLabel')}
               </Label>
               <select
                 id="operator"
@@ -497,14 +510,14 @@ export default function RulesPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="value" className="text-muted-foreground">
-                Value
+                {t('valueLabel')}
               </Label>
               <Input
                 id="value"
                 placeholder={
                   newCondition.operator === 'IN_LIST'
-                    ? 'comma-separated values'
-                    : 'value'
+                    ? t('valuePlaceholderList')
+                    : t('valuePlaceholderDefault')
                 }
                 value={newCondition.value}
                 onChange={(e) =>
@@ -513,7 +526,7 @@ export default function RulesPage() {
               />
               {newCondition.operator === 'IN_LIST' && (
                 <p className="text-xs text-muted-foreground/70">
-                  Comma-separated values, e.g., US,CA,MX
+                  {t('inListHint')}
                 </p>
               )}
             </div>
@@ -527,11 +540,11 @@ export default function RulesPage() {
                 setSelectedRule(null);
               }}
             >
-              Cancel
+              {t('cancelButton')}
             </Button>
             <Button onClick={handleCreateCondition} disabled={isSaving}>
               {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
-              {editingCondition ? 'Update' : 'Add'}
+              {editingCondition ? t('updateButton') : t('addButton')}
             </Button>
           </DialogFooter>
         </DialogContent>

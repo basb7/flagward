@@ -1,6 +1,7 @@
 'use client';
 
 import { TriangleAlert } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type * as React from 'react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -18,10 +19,19 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { useToast } from '@/lib/toast-context';
 
+/** The only resource types this dialog is wired for -- see `dashboard-nav.tsx`. */
+export type DeletableResourceType = 'organization' | 'project';
+
 export interface ImpactField<T extends Record<string, number>> {
   key: keyof T;
-  /** Singular noun, e.g. "environment" -- pluralized for display when the count is not 1. */
-  singular: string;
+  /**
+   * Renders this field's display text for a given count, e.g. "3 flags".
+   * Owned by the caller rather than built here: pluralizing by appending an
+   * "s" is an English-only trick, so the caller supplies an already-correct,
+   * already-translated string (typically from an ICU `plural` message) and
+   * this component only decides which fields to show and in what order.
+   */
+  label: (count: number) => string;
 }
 
 /**
@@ -42,6 +52,12 @@ export interface ImpactField<T extends Record<string, number>> {
  * blocking it would make the most destructive action here hardest for the
  * people who most rely on paste -- assistive tech, dictation, limited motor
  * control -- while a drag-and-drop walks straight past the block anyway.
+ *
+ * `resourceLabel` is deliberately a closed union rather than a free string:
+ * every sentence below says the resource type out loud (\"Delete
+ * organization\", \"este proyecto\"), and Spanish does not agree on gender
+ * the way English stays silent, so each type gets its own complete message
+ * rather than one template with the noun interpolated in.
  */
 export function DeleteResourceDialog<T extends Record<string, number>>({
   resourceLabel,
@@ -54,8 +70,7 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
   onDelete,
   onDeleted,
 }: {
-  /** Lowercase noun used in copy, e.g. "organization" or "project". */
-  resourceLabel: string;
+  resourceLabel: DeletableResourceType;
   /** The exact current name the caller must retype to confirm. */
   resourceName: string;
   /** A `<Button ... />` element carrying only styling props, no children. */
@@ -70,6 +85,7 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
   /** Called after a successful delete so the caller can refresh shared state. */
   onDeleted: () => void;
 }) {
+  const t = useTranslations('deleteResourceDialog');
   const { success } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [impact, setImpact] = useState<T | null>(null);
@@ -98,7 +114,7 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
         setImpactError(
           err instanceof Error
             ? err.message
-            : `Failed to load what deleting this ${resourceLabel} would remove.`,
+            : t(`impactErrorFallback.${resourceLabel}`),
         );
       })
       .finally(() => setIsLoadingImpact(false));
@@ -117,7 +133,7 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
     try {
       await onDelete(confirmValue);
       setIsOpen(false);
-      success(`${resourceName} deleted`);
+      success(t(`deletedToast.${resourceLabel}`, { name: resourceName }));
       onDeleted();
     } catch (err) {
       // Stays open and shows exactly what the backend said -- a destructive
@@ -125,7 +141,7 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
       setSubmitError(
         err instanceof Error
           ? err.message
-          : `Failed to delete this ${resourceLabel}.`,
+          : t(`deleteErrorFallback.${resourceLabel}`),
       );
     } finally {
       setIsDeleting(false);
@@ -139,12 +155,17 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <TriangleAlert className="size-4" />
-            Delete {resourceLabel}
+            {t(`title.${resourceLabel}`)}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            This permanently deletes{' '}
-            <span className="font-medium text-foreground">{resourceName}</span>{' '}
-            and everything inside it. This cannot be undone.
+            {t.rich('description', {
+              strong: (chunks) => (
+                <strong className="font-medium text-foreground">
+                  {chunks}
+                </strong>
+              ),
+              resourceName,
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -165,25 +186,20 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
                 {nonZeroImpact.length > 0 ? (
                   <>
                     <p className="mb-1.5 font-medium text-foreground">
-                      This will also remove:
+                      {t('impactIntro')}
                     </p>
                     <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
                       {nonZeroImpact.map((field) => {
                         const count = impact[field.key];
                         return (
-                          <li key={String(field.key)}>
-                            {count}{' '}
-                            {count === 1
-                              ? field.singular
-                              : `${field.singular}s`}
-                          </li>
+                          <li key={String(field.key)}>{field.label(count)}</li>
                         );
                       })}
                     </ul>
                   </>
                 ) : (
                   <p className="text-muted-foreground">
-                    Nothing else lives inside this {resourceLabel} yet.
+                    {t(`emptyImpact.${resourceLabel}`)}
                   </p>
                 )}
               </div>
@@ -199,11 +215,14 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
                   htmlFor="delete-confirm-name"
                   className="text-muted-foreground"
                 >
-                  Type{' '}
-                  <span className="font-medium text-foreground">
-                    {resourceName}
-                  </span>{' '}
-                  to confirm
+                  {t.rich('confirmLabel', {
+                    strong: (chunks) => (
+                      <strong className="font-medium text-foreground">
+                        {chunks}
+                      </strong>
+                    ),
+                    resourceName,
+                  })}
                 </Label>
                 <Input
                   id="delete-confirm-name"
@@ -226,8 +245,7 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
                   name inside the field is one autofill away from filling it.
                 */}
                 <p className="text-xs text-muted-foreground">
-                  Delete stays disabled until this matches the current name
-                  exactly.
+                  {t('confirmHint')}
                 </p>
               </div>
             ) : null}
@@ -242,7 +260,7 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+            {t('cancel')}
           </Button>
           {!blockMessage ? (
             <Button
@@ -251,7 +269,7 @@ export function DeleteResourceDialog<T extends Record<string, number>>({
               disabled={!canSubmit}
             >
               {isDeleting ? <Spinner size="sm" className="mr-2" /> : null}
-              Delete {resourceLabel}
+              {t(`deleteButton.${resourceLabel}`)}
             </Button>
           ) : null}
         </DialogFooter>

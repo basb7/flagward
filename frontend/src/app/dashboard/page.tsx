@@ -11,6 +11,7 @@ import {
   Zap,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { EvaluationsChart } from '@/components/charts/evaluations-chart';
 import { CreateEnvironmentDialog } from '@/components/dashboard/create-environment-dialog';
@@ -52,6 +53,7 @@ function formatRate(rate: number | null) {
 }
 
 export default function DashboardPage() {
+  const t = useTranslations('dashboardHome');
   const { error: showError } = useToast();
   const { user } = useAuth();
   const {
@@ -135,15 +137,15 @@ export default function DashboardPage() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <EmptyState
           icon={Building2}
-          title="Create your organization"
-          description="Everything in Flagward -- projects, environments and flags -- lives inside an organization. Name yours to get started."
+          title={t('createOrganizationTitle')}
+          description={t('createOrganizationDescription')}
           action={
             <CreateOrganizationDialog
               triggerButton={<Button />}
               triggerContent={
                 <>
                   <Plus className="mr-2 h-4 w-4" />
-                  Create organization
+                  {t('createOrganizationButton')}
                 </>
               }
               onCreated={async (organization) => {
@@ -174,8 +176,8 @@ export default function DashboardPage() {
         {canCreateProject ? (
           <EmptyState
             icon={Layers}
-            title="Create your first project"
-            description="Environments, flags and API keys all live inside a project."
+            title={t('createProjectTitle')}
+            description={t('createProjectDescription')}
             action={
               <CreateProjectDialog
                 organizationId={currentOrganization.id}
@@ -183,7 +185,7 @@ export default function DashboardPage() {
                 triggerContent={
                   <>
                     <Plus className="mr-2 h-4 w-4" />
-                    Create project
+                    {t('createProjectButton')}
                   </>
                 }
                 onCreated={() => refresh()}
@@ -193,8 +195,10 @@ export default function DashboardPage() {
         ) : (
           <EmptyState
             icon={Lock}
-            title="No project access yet"
-            description={`You have not been given access to any project in ${currentOrganization.name}. Ask an admin of this organization to grant you one.`}
+            title={t('noProjectAccessTitle')}
+            description={t('noProjectAccessDescription', {
+              organizationName: currentOrganization.name,
+            })}
           />
         )}
       </div>
@@ -217,18 +221,18 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Overview"
-        description="Flag delivery, SDK fleet and evaluation traffic at a glance."
+        title={t('overviewTitle')}
+        description={t('overviewDescription')}
       />
 
       <div className="flex flex-wrap items-center gap-2">
         <select
-          aria-label="Environment"
+          aria-label={t('environmentSelectLabel')}
           className="h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground"
           value={environment}
           onChange={(event) => setEnvironment(event.target.value)}
         >
-          <option value="">All environments</option>
+          <option value="">{t('allEnvironmentsOption')}</option>
           {environments.map((env) => (
             <option key={env.id} value={env.id}>
               {env.name}
@@ -257,34 +261,48 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Feature flags"
+          label={t('statFeatureFlagsLabel')}
           value={overview?.flags.total ?? 0}
           hint={
             overview?.flags.overridden
-              ? `${overview.flags.effective_enabled} serving true · ${overview.flags.overridden} overridden`
-              : `${overview?.flags.enabled ?? 0} enabled · ${overview?.flags.disabled ?? 0} disabled`
+              ? t('statFeatureFlagsHintOverridden', {
+                  trueCount: overview.flags.effective_enabled,
+                  overriddenCount: overview.flags.overridden,
+                })
+              : t('statFeatureFlagsHintNormal', {
+                  enabledCount: overview?.flags.enabled ?? 0,
+                  disabledCount: overview?.flags.disabled ?? 0,
+                })
           }
           icon={Flag}
           href="/dashboard/flags"
         />
         <StatCard
-          label="SDKs connected"
+          label={t('statSdksLabel')}
           value={overview?.sdks.active ?? 0}
-          hint={`${overview?.sdks.stale ?? 0} stale of ${overview?.sdks.total ?? 0} registered`}
+          hint={t('statSdksHint', {
+            staleCount: overview?.sdks.stale ?? 0,
+            totalCount: overview?.sdks.total ?? 0,
+          })}
           icon={Activity}
           href="/dashboard/monitoring"
         />
         <StatCard
-          label="Evaluations (24h)"
+          label={t('statEvaluationsLabel')}
           value={(overview?.evaluations.last_24h ?? 0).toLocaleString()}
-          hint={`${formatRate(overview?.evaluations.true_rate_24h ?? null)} served true`}
+          hint={t('statEvaluationsHint', {
+            rate: formatRate(overview?.evaluations.true_rate_24h ?? null),
+          })}
           icon={Zap}
           href="/dashboard/monitoring"
         />
         <StatCard
-          label="Active overrides"
+          label={t('statOverridesLabel')}
           value={overview?.overrides.active ?? 0}
-          hint={`${overview?.overrides.total ?? 0} recorded · ${overview?.overrides.last_24h ?? 0} in the last 24h`}
+          hint={t('statOverridesHint', {
+            totalCount: overview?.overrides.total ?? 0,
+            last24hCount: overview?.overrides.last_24h ?? 0,
+          })}
           icon={ShieldAlert}
           href="/dashboard/monitoring"
         />
@@ -293,11 +311,15 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>Evaluation volume</CardTitle>
+            <CardTitle>{t('evaluationVolumeTitle')}</CardTitle>
             <CardDescription>
               {timeseries
-                ? `${timeseries.total.toLocaleString()} evaluations across ${timeseries.buckets.length} hourly buckets`
-                : 'No data'}
+                ? t('evaluationVolumeDescriptionData', {
+                    formattedTotal: timeseries.total.toLocaleString(),
+                    total: timeseries.total,
+                    buckets: timeseries.buckets.length,
+                  })
+                : t('evaluationVolumeDescriptionEmpty')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -306,8 +328,8 @@ export default function DashboardPage() {
             ) : (
               <EmptyState
                 icon={Zap}
-                title="No evaluations yet"
-                description="Once an SDK calls the evaluate endpoint, traffic shows up here."
+                title={t('noEvaluationsTitle')}
+                description={t('noEvaluationsDescription')}
               />
             )}
           </CardContent>
@@ -315,12 +337,14 @@ export default function DashboardPage() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Most evaluated flags</CardTitle>
-            <CardDescription>Last {hours}h</CardDescription>
+            <CardTitle>{t('mostEvaluatedTitle')}</CardTitle>
+            <CardDescription>
+              {t('lastHoursDescription', { hours })}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {topFlags.length === 0 ? (
-              <EmptyState icon={Flag} title="No traffic in this window" />
+              <EmptyState icon={Flag} title={t('noTrafficTitle')} />
             ) : (
               <ul className="space-y-3">
                 {topFlags.map((flag) => (
@@ -355,17 +379,19 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Environments</CardTitle>
+          <CardTitle>{t('environmentsCardTitle')}</CardTitle>
           <CardDescription>
-            {overview?.environments.total ?? 0} configured
+            {t('environmentsCardDescription', {
+              count: overview?.environments.total ?? 0,
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {environments.length === 0 ? (
             <EmptyState
               icon={Layers}
-              title="No environments yet"
-              description="Create one to get an API key and start serving flags."
+              title={t('noEnvironmentsTitle')}
+              description={t('noEnvironmentsDescription')}
               action={
                 currentProject ? (
                   <CreateEnvironmentDialog
@@ -374,7 +400,7 @@ export default function DashboardPage() {
                     triggerContent={
                       <>
                         <Plus className="mr-2 h-4 w-4" />
-                        Create environment
+                        {t('createEnvironmentButton')}
                       </>
                     }
                     onCreated={loadEnvironments}

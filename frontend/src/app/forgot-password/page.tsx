@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,6 +18,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { ApiError, authApi } from '@/lib/api';
 
 export default function ForgotPasswordPage() {
+  const t = useTranslations('forgotPassword');
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -36,7 +38,7 @@ export default function ForgotPasswordPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 429) {
-          setError('Please wait a bit before trying again.');
+          setError(t('rateLimitError'));
         } else {
           // A 400 here is a DRF field error (`{"email": [...]}`), which
           // `request` joins as "email: msg1, msg2" -- strip the field name
@@ -44,7 +46,7 @@ export default function ForgotPasswordPage() {
           setError(err.message.replace(/^email:\s*/, ''));
         }
       } else {
-        setError('Failed to send the reset link.');
+        setError(t('genericError'));
       }
     } finally {
       setIsLoading(false);
@@ -57,12 +59,15 @@ export default function ForgotPasswordPage() {
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold text-center text-foreground">
-              Check your inbox
+              {t('checkInboxTitle')}
             </CardTitle>
             <CardDescription className="text-center text-muted-foreground">
-              If an address like{' '}
-              <strong className="text-foreground">{submittedEmail}</strong> has
-              an account, a reset link is on its way. Check your inbox.
+              {t.rich('checkInboxDescription', {
+                email: submittedEmail,
+                strong: (chunks) => (
+                  <strong className="text-foreground">{chunks}</strong>
+                ),
+              })}
             </CardDescription>
           </CardHeader>
           <CardFooter className="flex flex-col gap-3 pt-4">
@@ -70,7 +75,7 @@ export default function ForgotPasswordPage() {
               href="/login"
               className="text-center text-sm text-foreground underline-offset-4 hover:underline"
             >
-              Back to sign in
+              {t('backToSignIn')}
             </Link>
           </CardFooter>
         </Card>
@@ -83,10 +88,10 @@ export default function ForgotPasswordPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-foreground">
-            Forgot password?
+            {t('title')}
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground">
-            Enter your email and we&apos;ll send you a reset link
+            {t('description')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -101,12 +106,12 @@ export default function ForgotPasswordPage() {
             )}
             <div className="space-y-2">
               <Label htmlFor="email" className="text-muted-foreground">
-                Email
+                {t('emailLabel')}
               </Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder={t('emailPlaceholder')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -116,15 +121,15 @@ export default function ForgotPasswordPage() {
           <CardFooter className="flex flex-col gap-3 pt-4">
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? <Spinner size="sm" className="mr-2" /> : null}
-              Send reset link
+              {t('submit')}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
-              Remembered your password?{' '}
+              {t('rememberedPassword')}{' '}
               <Link
                 href="/login"
                 className="text-foreground underline-offset-4 hover:underline"
               >
-                Sign in
+                {t('signIn')}
               </Link>
             </p>
           </CardFooter>

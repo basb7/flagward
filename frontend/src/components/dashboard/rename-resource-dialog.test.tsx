@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Button } from '@/components/ui/button';
+import { renderWithIntl } from '@/test/i18n';
 import { RenameResourceDialog } from './rename-resource-dialog';
 
 const success = vi.fn();
@@ -23,7 +24,7 @@ function setup(
     .mockResolvedValue();
   const onSaved = vi.fn();
 
-  const utils = render(
+  const utils = renderWithIntl(
     <RenameResourceDialog
       title="Rename project"
       description="The name and key both appear across the dashboard and API."
