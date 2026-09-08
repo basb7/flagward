@@ -15,7 +15,7 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, invitationsApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { errorCopy } from '@/lib/error-copy';
+import { useErrorCopy } from '@/lib/error-copy';
 import { useToast } from '@/lib/toast-context';
 
 /**
@@ -36,6 +36,7 @@ export default function InvitePage() {
   const router = useRouter();
   const { success, error: showError, info } = useToast();
   const { user, isLoading: isAuthLoading, logout } = useAuth();
+  const errorCopy = useErrorCopy();
 
   const [preview, setPreview] = useState<PreviewState>({ status: 'loading' });
   const [isAccepting, setIsAccepting] = useState(false);

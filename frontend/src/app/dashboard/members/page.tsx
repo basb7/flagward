@@ -61,7 +61,7 @@ import {
   type ProjectRole,
   projectMembershipsApi,
 } from '@/lib/api';
-import { errorCopy } from '@/lib/error-copy';
+import { useErrorCopy } from '@/lib/error-copy';
 import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
 import { formatRelativeTime } from '@/lib/utils';
@@ -104,6 +104,7 @@ interface GrantForm {
 
 export default function MembersPage() {
   const { success, error: showError } = useToast();
+  const errorCopy = useErrorCopy();
   const {
     currentOrganization,
     projects,

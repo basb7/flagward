@@ -1,0 +1,21 @@
+{
+  "errors": {
+    "already_a_member": "Ya es miembro de esta organización.",
+    "invitation_already_used": "Esta invitación ya ha sido utilizada.",
+    "invitation_expired": "Esta invitación ha expirado.",
+    "invitation_not_found": "Esta invitación ya no existe.",
+    "invitation_revoked": "Esta invitación ha sido revocada.",
+    "last_admin_cannot_be_demoted": "Una organización debe mantener al menos un administrador. Primero, promueva a otra persona.",
+    "last_admin_cannot_be_removed": "Una organización debe mantener al menos un administrador. Primero, promueva a otra persona.",
+    "organization_has_other_members": "Elimine a todas las demás personas de esta organización antes de eliminarla.",
+    "project_limit_reached": "Esta organización ha alcanzado la cantidad de proyectos que su plan permite.",
+    "seat_limit_reached": "Esta organización no tiene cupos disponibles. Pida a un administrador que libere uno o actualice el plan, y vuelva a intentarlo.",
+    "token_already_used": "Este enlace para restablecer la contraseña ya ha sido utilizado.",
+    "token_expired": "Este enlace para restablecer la contraseña ha expirado. Solicite uno nuevo.",
+    "token_not_found": "Este enlace para restablecer la contraseña no es válido."
+  },
+  "metadata": {
+    "description": "Una plataforma SaaS de feature flags con evaluación local mediante SDK y sincronización en tiempo real por SSE.",
+    "title": "Flagward - Gestión de Feature Flags"
+  }
+}

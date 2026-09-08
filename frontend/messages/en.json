@@ -1,0 +1,21 @@
+{
+  "errors": {
+    "already_a_member": "You are already a member of this organization.",
+    "invitation_already_used": "This invitation has already been used.",
+    "invitation_expired": "This invitation has expired.",
+    "invitation_not_found": "This invitation no longer exists.",
+    "invitation_revoked": "This invitation has been revoked.",
+    "last_admin_cannot_be_demoted": "An organization must keep at least one admin. Promote somebody else first.",
+    "last_admin_cannot_be_removed": "An organization must keep at least one admin. Promote somebody else first.",
+    "organization_has_other_members": "Remove everybody else from this organization before deleting it.",
+    "project_limit_reached": "This organization has reached the number of projects its plan allows.",
+    "seat_limit_reached": "This organization has no seats left. Ask an admin to free one up or upgrade the plan, then try again.",
+    "token_already_used": "This password reset link has already been used.",
+    "token_expired": "This password reset link has expired. Ask for a new one.",
+    "token_not_found": "This password reset link is not valid."
+  },
+  "metadata": {
+    "description": "A SaaS feature flags platform with local SDK evaluation and real-time SSE synchronization",
+    "title": "Flagward - Feature Flag Management"
+  }
+}

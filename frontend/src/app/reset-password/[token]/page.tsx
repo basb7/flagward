@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { ApiError, authApi } from '@/lib/api';
-import { errorCopy } from '@/lib/error-copy';
+import { useErrorCopy } from '@/lib/error-copy';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -46,6 +46,7 @@ type LinkState = { status: 'form' } | { status: 'invalid'; message: string };
 
 export default function ResetPasswordPage() {
   const { token } = useParams<{ token: string }>();
+  const errorCopy = useErrorCopy();
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
