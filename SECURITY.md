@@ -17,11 +17,12 @@ reproduce an issue against `main` or the latest release before reporting it,
 and say which one you are on — with no version to name, a report cannot be
 placed in time.
 
-Flagward and the JavaScript SDKs (`@flagward/core`, `@flagward/react`,
-`@flagward/vue`) are
+Flagward and the JavaScript SDKs published under the `@flagward` scope are
 versioned **independently**, and so are the SDKs from each other. Matching
 version numbers are a coincidence, not a pairing — do not read one as
-requiring the other.
+requiring the other. The scope is named rather than enumerated on purpose:
+this policy covers every package in it, including ones published after this
+file was last edited. The README lists them.
 
 ## Reporting a vulnerability
 
