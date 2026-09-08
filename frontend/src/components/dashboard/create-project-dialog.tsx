@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import type * as React from 'react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ export function CreateProjectDialog({
   triggerContent: React.ReactNode;
   onCreated?: (project: Project) => void;
 }) {
+  const t = useTranslations('createProjectDialog');
   const { success, error: showError } = useToast();
   const errorCopy = useErrorCopy();
   const [isOpen, setIsOpen] = useState(false);
@@ -55,13 +57,11 @@ export function CreateProjectDialog({
       });
       setIsOpen(false);
       setName('');
-      success('Project created successfully');
+      success(t('successToast'));
       onCreated?.(project);
     } catch (err) {
       showError(
-        err instanceof Error
-          ? errorCopy(err.message)
-          : 'Failed to create project',
+        err instanceof Error ? errorCopy(err.message) : t('errorFallback'),
       );
     } finally {
       setIsSaving(false);
@@ -73,19 +73,19 @@ export function CreateProjectDialog({
       <DialogTrigger render={triggerButton}>{triggerContent}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-foreground">Create project</DialogTitle>
+          <DialogTitle className="text-foreground">{t('title')}</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Environments, flags and API keys all live inside a project.
+            {t('description')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="project-name" className="text-muted-foreground">
-              Name
+              {t('nameLabel')}
             </Label>
             <Input
               id="project-name"
-              placeholder="e.g., Mobile App"
+              placeholder={t('namePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -93,11 +93,11 @@ export function CreateProjectDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button onClick={handleCreate} disabled={isSaving || !name}>
             {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
-            Create
+            {t('create')}
           </Button>
         </DialogFooter>
       </DialogContent>

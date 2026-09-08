@@ -1,14 +1,10 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
 import type { EvaluationBucket } from '@/lib/api';
 import { cn } from '@/lib/utils';
-
-const SERIES = [
-  { key: 'true_count', label: 'Served true', className: 'bg-viz-true' },
-  { key: 'false_count', label: 'Served false', className: 'bg-viz-false' },
-] as const;
 
 function formatHour(timestamp: string) {
   return new Date(timestamp).toLocaleTimeString([], {
@@ -40,9 +36,23 @@ export function EvaluationsChart({
   buckets: EvaluationBucket[];
   className?: string;
 }) {
+  const t = useTranslations('evaluationsChart');
   const tableId = useId();
   const [hovered, setHovered] = useState<number | null>(null);
   const maxTotal = Math.max(...buckets.map((bucket) => bucket.total), 1);
+
+  const SERIES = [
+    {
+      key: 'true_count',
+      label: t('servedTrue'),
+      className: 'bg-viz-true',
+    },
+    {
+      key: 'false_count',
+      label: t('servedFalse'),
+      className: 'bg-viz-false',
+    },
+  ] as const;
 
   // Label only the ends and the midpoint — one label per bar collides at 24 bars.
   const labelledIndexes = new Set(
@@ -83,14 +93,14 @@ export function EvaluationsChart({
             <div className="mt-1 space-y-0.5 text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <span className="size-2 shrink-0 rounded-sm bg-viz-true" />
-                Served true
+                {t('servedTrue')}
                 <span className="ml-auto pl-3 text-foreground tabular-nums">
                   {active.true_count}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="size-2 shrink-0 rounded-sm bg-viz-false" />
-                Served false
+                {t('servedFalse')}
                 <span className="ml-auto pl-3 text-foreground tabular-nums">
                   {active.false_count}
                 </span>
@@ -114,7 +124,11 @@ export function EvaluationsChart({
               onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(index)}
               onBlur={() => setHovered(null)}
-              aria-label={`${formatDayHour(bucket.timestamp)}: ${bucket.true_count} true, ${bucket.false_count} false`}
+              aria-label={t('barLabel', {
+                date: formatDayHour(bucket.timestamp),
+                trueCount: bucket.true_count,
+                falseCount: bucket.false_count,
+              })}
             >
               {bucket.total === 0 ? (
                 <span className="h-px w-full rounded-full bg-border" />
@@ -160,12 +174,12 @@ export function EvaluationsChart({
       </div>
 
       <table id={tableId} className="sr-only">
-        <caption>Evaluations per hour</caption>
+        <caption>{t('caption')}</caption>
         <thead>
           <tr>
-            <th>Hour</th>
-            <th>Served true</th>
-            <th>Served false</th>
+            <th>{t('hourHeader')}</th>
+            <th>{t('servedTrue')}</th>
+            <th>{t('servedFalse')}</th>
           </tr>
         </thead>
         <tbody>

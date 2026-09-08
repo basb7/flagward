@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import type * as React from 'react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ export function RenameResourceDialog({
   /** Called after a successful save so the caller can refresh shared state. */
   onSaved: () => void;
 }) {
+  const t = useTranslations('renameResourceDialog');
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -82,7 +84,7 @@ export function RenameResourceDialog({
       success(toastMessage);
       onSaved();
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to save changes');
+      showError(err instanceof Error ? err.message : t('errorFallback'));
     } finally {
       setIsSaving(false);
     }
@@ -120,14 +122,14 @@ export function RenameResourceDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button
             onClick={handleSave}
             disabled={isSaving || hasEmptyRequiredField || isUnchanged}
           >
             {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
-            Save
+            {t('save')}
           </Button>
         </DialogFooter>
       </DialogContent>

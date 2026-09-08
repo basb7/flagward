@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import type * as React from 'react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,7 @@ export function CreateOrganizationDialog({
   triggerContent: React.ReactNode;
   onCreated?: (organization: Organization) => void;
 }) {
+  const t = useTranslations('createOrganizationDialog');
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -45,12 +47,10 @@ export function CreateOrganizationDialog({
       const organization = await tenancyApi.createOrganization({ name });
       setIsOpen(false);
       setName('');
-      success('Organization created successfully');
+      success(t('successToast'));
       onCreated?.(organization);
     } catch (err) {
-      showError(
-        err instanceof Error ? err.message : 'Failed to create organization',
-      );
+      showError(err instanceof Error ? err.message : t('errorFallback'));
     } finally {
       setIsSaving(false);
     }
@@ -61,31 +61,29 @@ export function CreateOrganizationDialog({
       <DialogTrigger render={triggerButton}>{triggerContent}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-foreground">
-            Create organization
-          </DialogTitle>
+          <DialogTitle className="text-foreground">{t('title')}</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            You become its admin immediately.
+            {t('description')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Label htmlFor="org-name" className="text-muted-foreground">
-            Name
+            {t('nameLabel')}
           </Label>
           <Input
             id="org-name"
-            placeholder="e.g., Acme Inc"
+            placeholder={t('namePlaceholder')}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button onClick={handleCreate} disabled={isSaving || !name}>
             {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
-            Create
+            {t('create')}
           </Button>
         </DialogFooter>
       </DialogContent>

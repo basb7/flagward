@@ -1,4 +1,109 @@
 {
+  "createEnvironmentDialog": {
+    "cancel": "Cancel",
+    "create": "Create",
+    "description": "Environments hold their own API key so an SDK can serve flags.",
+    "errorFallback": "Failed to create environment",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g., Production",
+    "successToast": "Environment created successfully",
+    "title": "Create environment"
+  },
+  "createOrganizationDialog": {
+    "cancel": "Cancel",
+    "create": "Create",
+    "description": "You become its admin immediately.",
+    "errorFallback": "Failed to create organization",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g., Acme Inc",
+    "successToast": "Organization created successfully",
+    "title": "Create organization"
+  },
+  "createProjectDialog": {
+    "cancel": "Cancel",
+    "create": "Create",
+    "description": "Environments, flags and API keys all live inside a project.",
+    "errorFallback": "Failed to create project",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g., Mobile App",
+    "successToast": "Project created successfully",
+    "title": "Create project"
+  },
+  "dashboardNav": {
+    "brandName": "Flagward",
+    "createOrganizationTitle": "Create a new organization",
+    "createProjectTitle": "Create a new project",
+    "deleteOrganizationBlocked": "{count, plural, one {This organization has # other member; remove them first before deleting it.} other {This organization has # other members; remove them first before deleting it.}}",
+    "deleteOrganizationSr": "Delete organization",
+    "deleteProjectSr": "Delete project",
+    "fieldKeyLabel": "Key",
+    "fieldNameLabel": "Name",
+    "impactFields": {
+      "conditions": "{count, plural, one {# condition} other {# conditions}}",
+      "environmentMemberships": "{count, plural, one {# environment membership} other {# environment memberships}}",
+      "environments": "{count, plural, one {# environment} other {# environments}}",
+      "evaluationLogs": "{count, plural, one {# evaluation log} other {# evaluation logs}}",
+      "flags": "{count, plural, one {# flag} other {# flags}}",
+      "invitations": "{count, plural, one {# invitation} other {# invitations}}",
+      "organizationMemberships": "{count, plural, one {# organization membership} other {# organization memberships}}",
+      "overrides": "{count, plural, one {# override} other {# overrides}}",
+      "projectMemberships": "{count, plural, one {# project membership} other {# project memberships}}",
+      "projects": "{count, plural, one {# project} other {# projects}}",
+      "sdkRegistrations": "{count, plural, one {# SDK registration} other {# SDK registrations}}",
+      "strategyRules": "{count, plural, one {# strategy rule} other {# strategy rules}}"
+    },
+    "logOut": "Log out",
+    "navSectionsLabel": "Dashboard sections",
+    "newOrganization": "New organization",
+    "newProject": "New project",
+    "organizationLabel": "Organization",
+    "projectLabel": "Project",
+    "renameOrganizationDescription": "This name appears everywhere the organization is shown.",
+    "renameOrganizationTitle": "Rename organization",
+    "renameOrganizationToast": "Organization renamed",
+    "renameProjectDescription": "The name and key both appear across the dashboard and API.",
+    "renameProjectTitle": "Rename project",
+    "renameProjectToast": "Project renamed",
+    "tabEnvironments": "Environments",
+    "tabFlags": "Flags",
+    "tabMembers": "Members",
+    "tabMonitoring": "Monitoring",
+    "tabOverview": "Overview"
+  },
+  "deleteResourceDialog": {
+    "cancel": "Cancel",
+    "confirmHint": "Delete stays disabled until this matches the current name exactly.",
+    "confirmLabel": "Type <strong>{resourceName}</strong> to confirm",
+    "deleteButton": {
+      "organization": "Delete organization",
+      "project": "Delete project"
+    },
+    "deleteErrorFallback": {
+      "organization": "Failed to delete this organization.",
+      "project": "Failed to delete this project."
+    },
+    "deletedToast": {
+      "organization": "{name} deleted",
+      "project": "{name} deleted"
+    },
+    "description": "This permanently deletes <strong>{resourceName}</strong> and everything inside it. This cannot be undone.",
+    "emptyImpact": {
+      "organization": "Nothing else lives inside this organization yet.",
+      "project": "Nothing else lives inside this project yet."
+    },
+    "impactErrorFallback": {
+      "organization": "Failed to load what deleting this organization would remove.",
+      "project": "Failed to load what deleting this project would remove."
+    },
+    "impactIntro": "This will also remove:",
+    "title": {
+      "organization": "Delete organization",
+      "project": "Delete project"
+    }
+  },
+  "dialog": {
+    "close": "Close"
+  },
   "errors": {
     "already_a_member": "You are already a member of this organization.",
     "invitation_already_used": "This invitation has already been used.",
@@ -13,6 +118,13 @@
     "token_already_used": "This password reset link has already been used.",
     "token_expired": "This password reset link has expired. Ask for a new one.",
     "token_not_found": "This password reset link is not valid."
+  },
+  "evaluationsChart": {
+    "barLabel": "{date}: {trueCount} true, {falseCount} false",
+    "caption": "Evaluations per hour",
+    "hourHeader": "Hour",
+    "servedFalse": "Served false",
+    "servedTrue": "Served true"
   },
   "forgotPassword": {
     "backToSignIn": "Back to sign in",
@@ -77,6 +189,11 @@
     "usernameLabel": "Username",
     "usernamePlaceholder": "Choose a username"
   },
+  "renameResourceDialog": {
+    "cancel": "Cancel",
+    "errorFallback": "Failed to save changes",
+    "save": "Save"
+  },
   "resetPassword": {
     "confirmPasswordLabel": "Confirm password",
     "confirmPasswordPlaceholder": "Re-enter the new password",
@@ -96,5 +213,11 @@
     "signIn": "Sign in",
     "submit": "Reset password",
     "title": "Choose a new password"
+  },
+  "spinner": {
+    "loading": "Loading"
+  },
+  "toast": {
+    "closeToast": "Close toast"
   }
 }

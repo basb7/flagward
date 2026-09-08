@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Button } from '@/components/ui/button';
+import { renderWithIntl } from '@/test/i18n';
 import { DeleteResourceDialog } from './delete-resource-dialog';
 
 const success = vi.fn();
@@ -16,9 +17,19 @@ interface Impact extends Record<string, number> {
   other_members: number;
 }
 
+// `label` stands in for what a real caller builds from an ICU plural
+// message (see `dashboard-nav.tsx`); it only needs to reproduce the exact
+// "N noun(s)" shape the assertions below check for.
 const IMPACT_FIELDS = [
-  { key: 'environments' as const, singular: 'environment' },
-  { key: 'flags' as const, singular: 'flag' },
+  {
+    key: 'environments' as const,
+    label: (count: number) =>
+      `${count} ${count === 1 ? 'environment' : 'environments'}`,
+  },
+  {
+    key: 'flags' as const,
+    label: (count: number) => `${count} ${count === 1 ? 'flag' : 'flags'}`,
+  },
 ];
 
 function impact(overrides: Partial<Impact> = {}): Impact {
@@ -36,7 +47,7 @@ function setup(
   const onDelete = vi.fn<(name: string) => Promise<void>>().mockResolvedValue();
   const onDeleted = vi.fn();
 
-  const utils = render(
+  const utils = renderWithIntl(
     <DeleteResourceDialog<Impact>
       resourceLabel="project"
       resourceName="Mobile App"

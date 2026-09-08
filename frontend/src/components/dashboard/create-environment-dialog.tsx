@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import type * as React from 'react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ export function CreateEnvironmentDialog({
   triggerContent: React.ReactNode;
   onCreated?: (environment: Environment) => void;
 }) {
+  const t = useTranslations('createEnvironmentDialog');
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -54,12 +56,10 @@ export function CreateEnvironmentDialog({
       });
       setIsOpen(false);
       setName('');
-      success('Environment created successfully');
+      success(t('successToast'));
       onCreated?.(environment);
     } catch (err) {
-      showError(
-        err instanceof Error ? err.message : 'Failed to create environment',
-      );
+      showError(err instanceof Error ? err.message : t('errorFallback'));
     } finally {
       setIsSaving(false);
     }
@@ -70,21 +70,19 @@ export function CreateEnvironmentDialog({
       <DialogTrigger render={triggerButton}>{triggerContent}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-foreground">
-            Create environment
-          </DialogTitle>
+          <DialogTitle className="text-foreground">{t('title')}</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Environments hold their own API key so an SDK can serve flags.
+            {t('description')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="environment-name" className="text-muted-foreground">
-              Name
+              {t('nameLabel')}
             </Label>
             <Input
               id="environment-name"
-              placeholder="e.g., Production"
+              placeholder={t('namePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -92,11 +90,11 @@ export function CreateEnvironmentDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button onClick={handleCreate} disabled={isSaving || !name}>
             {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
-            Create
+            {t('create')}
           </Button>
         </DialogFooter>
       </DialogContent>

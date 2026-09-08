@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { CreateOrganizationDialog } from '@/components/dashboard/create-organization-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
 import {
@@ -39,42 +40,16 @@ import { hasOrgCapability, useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
 import { cn } from '@/lib/utils';
 
-const ORGANIZATION_IMPACT_FIELDS: ImpactField<OrganizationDeletionImpact>[] = [
-  { key: 'projects', singular: 'project' },
-  { key: 'environments', singular: 'environment' },
-  { key: 'flags', singular: 'flag' },
-  { key: 'strategy_rules', singular: 'strategy rule' },
-  { key: 'conditions', singular: 'condition' },
-  { key: 'overrides', singular: 'override' },
-  { key: 'evaluation_logs', singular: 'evaluation log' },
-  { key: 'sdk_registrations', singular: 'SDK registration' },
-  { key: 'organization_memberships', singular: 'organization membership' },
-  { key: 'project_memberships', singular: 'project membership' },
-  { key: 'environment_memberships', singular: 'environment membership' },
-  { key: 'invitations', singular: 'invitation' },
-];
-
-const PROJECT_IMPACT_FIELDS: ImpactField<ProjectDeletionImpact>[] = [
-  { key: 'environments', singular: 'environment' },
-  { key: 'flags', singular: 'flag' },
-  { key: 'strategy_rules', singular: 'strategy rule' },
-  { key: 'conditions', singular: 'condition' },
-  { key: 'overrides', singular: 'override' },
-  { key: 'evaluation_logs', singular: 'evaluation log' },
-  { key: 'sdk_registrations', singular: 'SDK registration' },
-  { key: 'project_memberships', singular: 'project membership' },
-  { key: 'environment_memberships', singular: 'environment membership' },
-];
-
-const TABS = [
-  { href: '/dashboard', label: 'Overview', icon: LayoutGrid, exact: true },
-  { href: '/dashboard/flags', label: 'Flags', icon: Flag },
-  { href: '/dashboard/environments', label: 'Environments', icon: Layers },
-  { href: '/dashboard/monitoring', label: 'Monitoring', icon: Activity },
-  { href: '/dashboard/members', label: 'Members', icon: Users },
+const TAB_HREFS = [
+  { href: '/dashboard', icon: LayoutGrid, exact: true },
+  { href: '/dashboard/flags', icon: Flag },
+  { href: '/dashboard/environments', icon: Layers },
+  { href: '/dashboard/monitoring', icon: Activity },
+  { href: '/dashboard/members', icon: Users },
 ] as const;
 
 export function DashboardNav() {
+  const t = useTranslations('dashboardNav');
   const { user, logout } = useAuth();
   const {
     organizations,
@@ -86,6 +61,105 @@ export function DashboardNav() {
     refresh,
   } = useTenant();
   const pathname = usePathname();
+
+  // Translated labels can only be read inside the component, unlike the
+  // hrefs/icons in TAB_HREFS above -- so the tab list itself is built here,
+  // per render, rather than once at module scope.
+  const TABS = [
+    { ...TAB_HREFS[0], label: t('tabOverview') },
+    { ...TAB_HREFS[1], label: t('tabFlags') },
+    { ...TAB_HREFS[2], label: t('tabEnvironments') },
+    { ...TAB_HREFS[3], label: t('tabMonitoring') },
+    { ...TAB_HREFS[4], label: t('tabMembers') },
+  ] as const;
+
+  // Same reasoning as TABS: each field's `label` calls an ICU plural message,
+  // which needs `t` from this render, so these arrays live in the component
+  // body instead of module scope.
+  const ORGANIZATION_IMPACT_FIELDS: ImpactField<OrganizationDeletionImpact>[] =
+    [
+      {
+        key: 'projects',
+        label: (count) => t('impactFields.projects', { count }),
+      },
+      {
+        key: 'environments',
+        label: (count) => t('impactFields.environments', { count }),
+      },
+      { key: 'flags', label: (count) => t('impactFields.flags', { count }) },
+      {
+        key: 'strategy_rules',
+        label: (count) => t('impactFields.strategyRules', { count }),
+      },
+      {
+        key: 'conditions',
+        label: (count) => t('impactFields.conditions', { count }),
+      },
+      {
+        key: 'overrides',
+        label: (count) => t('impactFields.overrides', { count }),
+      },
+      {
+        key: 'evaluation_logs',
+        label: (count) => t('impactFields.evaluationLogs', { count }),
+      },
+      {
+        key: 'sdk_registrations',
+        label: (count) => t('impactFields.sdkRegistrations', { count }),
+      },
+      {
+        key: 'organization_memberships',
+        label: (count) => t('impactFields.organizationMemberships', { count }),
+      },
+      {
+        key: 'project_memberships',
+        label: (count) => t('impactFields.projectMemberships', { count }),
+      },
+      {
+        key: 'environment_memberships',
+        label: (count) => t('impactFields.environmentMemberships', { count }),
+      },
+      {
+        key: 'invitations',
+        label: (count) => t('impactFields.invitations', { count }),
+      },
+    ];
+
+  const PROJECT_IMPACT_FIELDS: ImpactField<ProjectDeletionImpact>[] = [
+    {
+      key: 'environments',
+      label: (count) => t('impactFields.environments', { count }),
+    },
+    { key: 'flags', label: (count) => t('impactFields.flags', { count }) },
+    {
+      key: 'strategy_rules',
+      label: (count) => t('impactFields.strategyRules', { count }),
+    },
+    {
+      key: 'conditions',
+      label: (count) => t('impactFields.conditions', { count }),
+    },
+    {
+      key: 'overrides',
+      label: (count) => t('impactFields.overrides', { count }),
+    },
+    {
+      key: 'evaluation_logs',
+      label: (count) => t('impactFields.evaluationLogs', { count }),
+    },
+    {
+      key: 'sdk_registrations',
+      label: (count) => t('impactFields.sdkRegistrations', { count }),
+    },
+    {
+      key: 'project_memberships',
+      label: (count) => t('impactFields.projectMemberships', { count }),
+    },
+    {
+      key: 'environment_memberships',
+      label: (count) => t('impactFields.environmentMemberships', { count }),
+    },
+  ];
 
   const isActive = (tab: (typeof TABS)[number]) =>
     'exact' in tab && tab.exact
@@ -101,14 +175,14 @@ export function DashboardNav() {
               <Flag className="size-3.5" />
             </span>
             <span className="font-heading text-sm font-semibold tracking-tight">
-              Flagward
+              {t('brandName')}
             </span>
           </Link>
 
           <div className="flex items-center gap-2">
             {organizations.length > 1 ? (
               <select
-                aria-label="Organization"
+                aria-label={t('organizationLabel')}
                 className="h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground"
                 value={currentOrganization?.id ?? ''}
                 onChange={(event) => {
@@ -128,7 +202,7 @@ export function DashboardNav() {
             ) : currentOrganization ? (
               <span
                 role="status"
-                aria-label="Organization"
+                aria-label={t('organizationLabel')}
                 className="flex h-8 items-center rounded-lg border border-border bg-card px-2 text-sm text-foreground"
               >
                 {currentOrganization.name}
@@ -140,7 +214,7 @@ export function DashboardNav() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  title="Create a new organization"
+                  title={t('createOrganizationTitle')}
                   className="gap-1.5 text-muted-foreground hover:text-foreground"
                 />
               }
@@ -148,7 +222,7 @@ export function DashboardNav() {
                 <>
                   <Plus className="size-4" />
                   <span className="sr-only sm:not-sr-only">
-                    New organization
+                    {t('newOrganization')}
                   </span>
                 </>
               }
@@ -161,10 +235,10 @@ export function DashboardNav() {
             {currentOrganization &&
             hasOrgCapability(user, currentOrganization.id, 'org.manage') ? (
               <RenameResourceDialog
-                title="Rename organization"
-                description="This name appears everywhere the organization is shown."
-                toastMessage="Organization renamed"
-                fields={[{ key: 'name', label: 'Name' }]}
+                title={t('renameOrganizationTitle')}
+                description={t('renameOrganizationDescription')}
+                toastMessage={t('renameOrganizationToast')}
+                fields={[{ key: 'name', label: t('fieldNameLabel') }]}
                 initialValues={{ name: currentOrganization.name }}
                 onSave={async (values) => {
                   await tenancyApi.renameOrganization(currentOrganization.id, {
@@ -182,7 +256,9 @@ export function DashboardNav() {
                 triggerContent={
                   <>
                     <Pencil className="size-4" />
-                    <span className="sr-only">Rename organization</span>
+                    <span className="sr-only">
+                      {t('renameOrganizationTitle')}
+                    </span>
                   </>
                 }
               />
@@ -199,7 +275,9 @@ export function DashboardNav() {
                 impactFields={ORGANIZATION_IMPACT_FIELDS}
                 blockedWhen={(impact) =>
                   impact.other_members > 0
-                    ? `This organization has ${impact.other_members} other member(s); remove them first before deleting it.`
+                    ? t('deleteOrganizationBlocked', {
+                        count: impact.other_members,
+                      })
                     : null
                 }
                 onDelete={(confirmName) =>
@@ -219,7 +297,7 @@ export function DashboardNav() {
                 triggerContent={
                   <>
                     <Trash2 className="size-4" />
-                    <span className="sr-only">Delete organization</span>
+                    <span className="sr-only">{t('deleteOrganizationSr')}</span>
                   </>
                 }
               />
@@ -229,7 +307,7 @@ export function DashboardNav() {
 
             {projects.length > 0 ? (
               <select
-                aria-label="Project"
+                aria-label={t('projectLabel')}
                 className="h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground"
                 value={currentProject?.id ?? ''}
                 onChange={(event) => {
@@ -254,14 +332,16 @@ export function DashboardNav() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    title="Create a new project"
+                    title={t('createProjectTitle')}
                     className="gap-1.5 text-muted-foreground hover:text-foreground"
                   />
                 }
                 triggerContent={
                   <>
                     <Plus className="size-4" />
-                    <span className="sr-only sm:not-sr-only">New project</span>
+                    <span className="sr-only sm:not-sr-only">
+                      {t('newProject')}
+                    </span>
                   </>
                 }
                 onCreated={(project) => {
@@ -273,12 +353,12 @@ export function DashboardNav() {
 
             {currentProject ? (
               <RenameResourceDialog
-                title="Rename project"
-                description="The name and key both appear across the dashboard and API."
-                toastMessage="Project renamed"
+                title={t('renameProjectTitle')}
+                description={t('renameProjectDescription')}
+                toastMessage={t('renameProjectToast')}
                 fields={[
-                  { key: 'name', label: 'Name' },
-                  { key: 'key', label: 'Key' },
+                  { key: 'name', label: t('fieldNameLabel') },
+                  { key: 'key', label: t('fieldKeyLabel') },
                 ]}
                 initialValues={{
                   name: currentProject.name,
@@ -298,7 +378,7 @@ export function DashboardNav() {
                 triggerContent={
                   <>
                     <Pencil className="size-4" />
-                    <span className="sr-only">Rename project</span>
+                    <span className="sr-only">{t('renameProjectTitle')}</span>
                   </>
                 }
               />
@@ -326,7 +406,7 @@ export function DashboardNav() {
                 triggerContent={
                   <>
                     <Trash2 className="size-4" />
-                    <span className="sr-only">Delete project</span>
+                    <span className="sr-only">{t('deleteProjectSr')}</span>
                   </>
                 }
               />
@@ -350,7 +430,7 @@ export function DashboardNav() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={logout} className="text-destructive">
                   <LogOut className="mr-2 size-4" />
-                  Log out
+                  {t('logOut')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -358,7 +438,7 @@ export function DashboardNav() {
         </div>
 
         <nav
-          aria-label="Dashboard sections"
+          aria-label={t('navSectionsLabel')}
           className="-mb-px flex gap-1 overflow-x-auto"
         >
           {TABS.map((tab) => {

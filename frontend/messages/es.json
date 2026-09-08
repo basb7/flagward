@@ -1,4 +1,109 @@
 {
+  "createEnvironmentDialog": {
+    "cancel": "Cancelar",
+    "create": "Crear",
+    "description": "Cada entorno tiene su propia clave de API para que un SDK pueda servir flags.",
+    "errorFallback": "No se pudo crear el entorno.",
+    "nameLabel": "Nombre",
+    "namePlaceholder": "p. ej., Producción",
+    "successToast": "Entorno creado correctamente.",
+    "title": "Crear entorno"
+  },
+  "createOrganizationDialog": {
+    "cancel": "Cancelar",
+    "create": "Crear",
+    "description": "Se convierte en su administrador de inmediato.",
+    "errorFallback": "No se pudo crear la organización.",
+    "nameLabel": "Nombre",
+    "namePlaceholder": "p. ej., Acme Inc",
+    "successToast": "Organización creada correctamente.",
+    "title": "Crear organización"
+  },
+  "createProjectDialog": {
+    "cancel": "Cancelar",
+    "create": "Crear",
+    "description": "Los entornos, los flags y las claves de API viven dentro de un proyecto.",
+    "errorFallback": "No se pudo crear el proyecto.",
+    "nameLabel": "Nombre",
+    "namePlaceholder": "p. ej., Mobile App",
+    "successToast": "Proyecto creado correctamente.",
+    "title": "Crear proyecto"
+  },
+  "dashboardNav": {
+    "brandName": "Flagward",
+    "createOrganizationTitle": "Crear una nueva organización",
+    "createProjectTitle": "Crear un nuevo proyecto",
+    "deleteOrganizationBlocked": "{count, plural, one {Esta organización tiene # otro miembro; elimínelo primero antes de eliminarla.} other {Esta organización tiene # otros miembros; elimínelos primero antes de eliminarla.}}",
+    "deleteOrganizationSr": "Eliminar organización",
+    "deleteProjectSr": "Eliminar proyecto",
+    "fieldKeyLabel": "Clave",
+    "fieldNameLabel": "Nombre",
+    "impactFields": {
+      "conditions": "{count, plural, one {# condición} other {# condiciones}}",
+      "environmentMemberships": "{count, plural, one {# membresía de entorno} other {# membresías de entorno}}",
+      "environments": "{count, plural, one {# entorno} other {# entornos}}",
+      "evaluationLogs": "{count, plural, one {# registro de evaluación} other {# registros de evaluación}}",
+      "flags": "{count, plural, one {# flag} other {# flags}}",
+      "invitations": "{count, plural, one {# invitación} other {# invitaciones}}",
+      "organizationMemberships": "{count, plural, one {# membresía de organización} other {# membresías de organización}}",
+      "overrides": "{count, plural, one {# anulación} other {# anulaciones}}",
+      "projectMemberships": "{count, plural, one {# membresía de proyecto} other {# membresías de proyecto}}",
+      "projects": "{count, plural, one {# proyecto} other {# proyectos}}",
+      "sdkRegistrations": "{count, plural, one {# registro de SDK} other {# registros de SDK}}",
+      "strategyRules": "{count, plural, one {# regla de estrategia} other {# reglas de estrategia}}"
+    },
+    "logOut": "Cerrar sesión",
+    "navSectionsLabel": "Secciones del panel",
+    "newOrganization": "Nueva organización",
+    "newProject": "Nuevo proyecto",
+    "organizationLabel": "Organización",
+    "projectLabel": "Proyecto",
+    "renameOrganizationDescription": "Este nombre aparece en todos los lugares donde se muestra la organización.",
+    "renameOrganizationTitle": "Renombrar organización",
+    "renameOrganizationToast": "Organización renombrada.",
+    "renameProjectDescription": "El nombre y la clave aparecen tanto en el panel como en la API.",
+    "renameProjectTitle": "Renombrar proyecto",
+    "renameProjectToast": "Proyecto renombrado.",
+    "tabEnvironments": "Entornos",
+    "tabFlags": "Flags",
+    "tabMembers": "Miembros",
+    "tabMonitoring": "Monitoreo",
+    "tabOverview": "Resumen"
+  },
+  "deleteResourceDialog": {
+    "cancel": "Cancelar",
+    "confirmHint": "Eliminar permanece deshabilitado hasta que esto coincida exactamente con el nombre actual.",
+    "confirmLabel": "Escriba <strong>{resourceName}</strong> para confirmar",
+    "deleteButton": {
+      "organization": "Eliminar organización",
+      "project": "Eliminar proyecto"
+    },
+    "deleteErrorFallback": {
+      "organization": "No se pudo eliminar esta organización.",
+      "project": "No se pudo eliminar este proyecto."
+    },
+    "deletedToast": {
+      "organization": "{name} eliminada",
+      "project": "{name} eliminado"
+    },
+    "description": "Esto elimina permanentemente <strong>{resourceName}</strong> y todo lo que contiene. Esta acción no se puede deshacer.",
+    "emptyImpact": {
+      "organization": "Todavía no hay nada más dentro de esta organización.",
+      "project": "Todavía no hay nada más dentro de este proyecto."
+    },
+    "impactErrorFallback": {
+      "organization": "No se pudo cargar lo que eliminaría esta organización.",
+      "project": "No se pudo cargar lo que eliminaría este proyecto."
+    },
+    "impactIntro": "Esto también eliminará:",
+    "title": {
+      "organization": "Eliminar organización",
+      "project": "Eliminar proyecto"
+    }
+  },
+  "dialog": {
+    "close": "Cerrar"
+  },
   "errors": {
     "already_a_member": "Ya es miembro de esta organización.",
     "invitation_already_used": "Esta invitación ya ha sido utilizada.",
@@ -13,6 +118,13 @@
     "token_already_used": "Este enlace para restablecer la contraseña ya ha sido utilizado.",
     "token_expired": "Este enlace para restablecer la contraseña ha expirado. Solicite uno nuevo.",
     "token_not_found": "Este enlace para restablecer la contraseña no es válido."
+  },
+  "evaluationsChart": {
+    "barLabel": "{date}: {trueCount} verdadero, {falseCount} falso",
+    "caption": "Evaluaciones por hora",
+    "hourHeader": "Hora",
+    "servedFalse": "Servido como falso",
+    "servedTrue": "Servido como verdadero"
   },
   "forgotPassword": {
     "backToSignIn": "Volver a iniciar sesión",
@@ -77,6 +189,11 @@
     "usernameLabel": "Nombre de usuario",
     "usernamePlaceholder": "Elija un nombre de usuario"
   },
+  "renameResourceDialog": {
+    "cancel": "Cancelar",
+    "errorFallback": "No se pudieron guardar los cambios.",
+    "save": "Guardar"
+  },
   "resetPassword": {
     "confirmPasswordLabel": "Confirmar contraseña",
     "confirmPasswordPlaceholder": "Vuelva a ingresar la nueva contraseña",
@@ -96,5 +213,11 @@
     "signIn": "Iniciar sesión",
     "submit": "Restablecer contraseña",
     "title": "Elija una nueva contraseña"
+  },
+  "spinner": {
+    "loading": "Cargando"
+  },
+  "toast": {
+    "closeToast": "Cerrar notificación"
   }
 }
