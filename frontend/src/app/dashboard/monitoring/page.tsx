@@ -9,6 +9,7 @@ import {
   ShieldAlert,
   Zap,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, StatusDot } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -62,25 +63,33 @@ import { formatRelativeTime, formatTimestamp } from '@/lib/utils';
 
 type Panel = 'sdks' | 'evaluations' | 'overrides';
 
-const PANELS: { key: Panel; label: string }[] = [
-  { key: 'sdks', label: 'SDKs' },
-  { key: 'evaluations', label: 'Evaluations' },
-  { key: 'overrides', label: 'Overrides' },
-];
-
-const RESULT_FILTERS = [
-  { label: 'All', value: '' },
-  { label: 'True', value: 'true' },
-  { label: 'False', value: 'false' },
-] as const;
-
 function isStale(lastSeenAt: string, windowMinutes: number) {
   return Date.now() - Date.parse(lastSeenAt) > windowMinutes * 60_000;
 }
 
 export default function MonitoringPage() {
+  const t = useTranslations('monitoringPage');
   const { success, error: showError } = useToast();
   const { currentProject } = useTenant();
+
+  // Translated labels can only be read inside the component, unlike the raw
+  // `key`/`value`s below (internal UI identifiers only, never sent to or
+  // compared against the backend) -- see the same reasoning on `TABS` in
+  // `dashboard-nav.tsx` and `OPERATORS` in `flags/[id]/rules/page.tsx`.
+  // Render-only, like both of those, so no memoization: neither array is
+  // read from a `useCallback`/`useEffect`/`useMemo` dependency array
+  // anywhere in this file.
+  const PANELS: { key: Panel; label: string }[] = [
+    { key: 'sdks', label: t('panelSdks') },
+    { key: 'evaluations', label: t('panelEvaluations') },
+    { key: 'overrides', label: t('panelOverrides') },
+  ];
+
+  const RESULT_FILTERS = [
+    { label: t('resultFilterAll'), value: '' },
+    { label: t('resultFilterTrue'), value: 'true' },
+    { label: t('resultFilterFalse'), value: 'false' },
+  ] as const;
 
   const [panel, setPanel] = useState<Panel>('sdks');
   const [environment, setEnvironment] = useState('');
@@ -159,9 +168,7 @@ export default function MonitoringPage() {
       setOverrides(overridesRes.results);
       setFlags(flagsRes.results);
     } catch (err) {
-      showError(
-        err instanceof Error ? err.message : 'Failed to load monitoring data',
-      );
+      showError(err instanceof Error ? err.message : t('loadErrorFallback'));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -173,6 +180,7 @@ export default function MonitoringPage() {
     resultFilter,
     showError,
     currentProject,
+    t,
   ]);
 
   useEffect(() => {
@@ -191,9 +199,11 @@ export default function MonitoringPage() {
     try {
       await overridesApi.lift(override.id);
       await load();
-      success(`Override lifted on ${override.flag_key}`);
+      success(t('liftOverrideSuccessToast', { flagKey: override.flag_key }));
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to lift override');
+      showError(
+        err instanceof Error ? err.message : t('liftOverrideErrorFallback'),
+      );
     } finally {
       setLiftingOverrideId(null);
     }
@@ -206,10 +216,10 @@ export default function MonitoringPage() {
       setIsDialogOpen(false);
       setNewOverride({ flag: '', is_enabled: false, reason: '' });
       await load();
-      success('Override recorded and applied to the flag');
+      success(t('createOverrideSuccessToast'));
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : 'Failed to create override',
+        err instanceof Error ? err.message : t('createOverrideErrorFallback'),
       );
     } finally {
       setIsSaving(false);
@@ -234,8 +244,8 @@ export default function MonitoringPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Monitoring"
-        description="Which SDKs are connected, what they evaluated, and every manual override."
+        title={t('pageTitle')}
+        description={t('pageDescription')}
         action={
           <Button
             variant="outline"
@@ -244,21 +254,21 @@ export default function MonitoringPage() {
             disabled={isRefreshing}
           >
             <RefreshCw className={isRefreshing ? 'animate-spin' : undefined} />
-            Refresh
+            {t('refreshButton')}
           </Button>
         }
       />
 
       <div className="flex flex-wrap items-center gap-2">
         <select
-          aria-label="Environment"
+          aria-label={t('environmentFilterAriaLabel')}
           className="h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground"
           value={environment}
           onChange={(event) =>
             applyFilter(() => setEnvironment(event.target.value))
           }
         >
-          <option value="">All environments</option>
+          <option value="">{t('allEnvironmentsOption')}</option>
           {environments.map((env) => (
             <option key={env.id} value={env.id}>
               {env.name}
@@ -287,21 +297,21 @@ export default function MonitoringPage() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
-          label="SDKs active"
+          label={t('sdksActiveLabel')}
           value={health?.active ?? 0}
-          hint={`Seen in the last ${activeWindow} min`}
+          hint={t('sdksActiveHint', { activeWindow })}
           icon={Activity}
         />
         <StatCard
-          label="SDKs stale"
+          label={t('sdksStaleLabel')}
           value={health?.stale ?? 0}
-          hint={`${health?.total ?? 0} registered in total`}
+          hint={t('sdksStaleHint', { total: health?.total ?? 0 })}
           icon={Plug}
         />
         <StatCard
-          label="Logged evaluations"
+          label={t('loggedEvaluationsLabel')}
           value={evaluationsCount.toLocaleString()}
-          hint="Matching the current filters"
+          hint={t('loggedEvaluationsHint')}
           icon={Zap}
         />
       </div>
@@ -310,30 +320,32 @@ export default function MonitoringPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Registered SDKs</CardTitle>
+              <CardTitle>{t('registeredSdksCardTitle')}</CardTitle>
               <CardDescription>
-                {registrations.length} instance(s). An SDK is stale after{' '}
-                {activeWindow} minutes without polling.
+                {t('registeredSdksCardDescription', {
+                  count: registrations.length,
+                  activeWindow,
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {registrations.length === 0 ? (
                 <EmptyState
                   icon={Plug}
-                  title="No SDK has registered yet"
-                  description="SDKs appear here after they call POST /api/v1/sdk/register/ with an environment API key."
+                  title={t('noSdksTitle')}
+                  description={t('noSdksDescription')}
                 />
               ) : (
                 <Table>
                   <TableHeader className="[&_th]:text-muted-foreground">
                     <TableRow>
-                      <TableHead>Status</TableHead>
-                      <TableHead>SDK</TableHead>
-                      <TableHead>Version</TableHead>
-                      <TableHead>Environment</TableHead>
-                      <TableHead>SDK key</TableHead>
-                      <TableHead>Last seen</TableHead>
-                      <TableHead>Registered</TableHead>
+                      <TableHead>{t('statusHeader')}</TableHead>
+                      <TableHead>{t('sdkHeader')}</TableHead>
+                      <TableHead>{t('versionHeader')}</TableHead>
+                      <TableHead>{t('environmentHeader')}</TableHead>
+                      <TableHead>{t('sdkKeyHeader')}</TableHead>
+                      <TableHead>{t('lastSeenHeader')}</TableHead>
+                      <TableHead>{t('registeredHeader')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -350,7 +362,7 @@ export default function MonitoringPage() {
                                 tone={stale ? 'warning' : 'success'}
                                 pulse={!stale}
                               />
-                              {stale ? 'Stale' : 'Active'}
+                              {stale ? t('staleStatus') : t('activeStatus')}
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium text-foreground">
@@ -392,9 +404,9 @@ export default function MonitoringPage() {
           {health && health.by_version.length > 0 ? (
             <Card>
               <CardHeader>
-                <CardTitle>Versions in the fleet</CardTitle>
+                <CardTitle>{t('versionsInFleetCardTitle')}</CardTitle>
                 <CardDescription>
-                  Spot instances left behind on an old release.
+                  {t('versionsInFleetCardDescription')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -418,24 +430,24 @@ export default function MonitoringPage() {
       {panel === 'evaluations' ? (
         <Card>
           <CardHeader>
-            <CardTitle>Evaluation log</CardTitle>
+            <CardTitle>{t('evaluationLogCardTitle')}</CardTitle>
             <CardDescription>
-              {evaluationsCount.toLocaleString()} evaluation(s) recorded. The
-              context hash identifies a caller context without storing its
-              attributes.
+              {t('evaluationLogCardDescription', {
+                count: evaluationsCount.toLocaleString(),
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <select
-                aria-label="Flag"
+                aria-label={t('flagFilterAriaLabel')}
                 className="h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground"
                 value={flagFilter}
                 onChange={(event) =>
                   applyFilter(() => setFlagFilter(event.target.value))
                 }
               >
-                <option value="">All flags</option>
+                <option value="">{t('allFlagsOption')}</option>
                 {flags.map((flag) => (
                   <option key={flag.id} value={flag.id}>
                     {flag.key}
@@ -467,19 +479,19 @@ export default function MonitoringPage() {
             {evaluations.length === 0 ? (
               <EmptyState
                 icon={Zap}
-                title="No evaluations match these filters"
-                description="Evaluations are recorded when an SDK calls POST /api/v1/sdk/evaluate/."
+                title={t('noEvaluationsTitle')}
+                description={t('noEvaluationsDescription')}
               />
             ) : (
               <>
                 <Table>
                   <TableHeader className="[&_th]:text-muted-foreground">
                     <TableRow>
-                      <TableHead>Result</TableHead>
-                      <TableHead>Flag</TableHead>
-                      <TableHead>Environment</TableHead>
-                      <TableHead>Context hash</TableHead>
-                      <TableHead>When</TableHead>
+                      <TableHead>{t('resultHeader')}</TableHead>
+                      <TableHead>{t('flagHeader')}</TableHead>
+                      <TableHead>{t('environmentHeader')}</TableHead>
+                      <TableHead>{t('contextHashHeader')}</TableHead>
+                      <TableHead>{t('whenHeader')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -487,7 +499,9 @@ export default function MonitoringPage() {
                       <TableRow key={log.id}>
                         <TableCell>
                           <Badge variant={log.result ? 'info' : 'muted'}>
-                            {log.result ? 'true' : 'false'}
+                            {log.result
+                              ? t('evaluationResultTrue')
+                              : t('evaluationResultFalse')}
                           </Badge>
                         </TableCell>
                         <TableCell className="font-mono text-xs text-foreground">
@@ -515,7 +529,7 @@ export default function MonitoringPage() {
 
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">
-                    Page {evaluationsPage} of {lastPage}
+                    {t('pageOf', { page: evaluationsPage, lastPage })}
                   </span>
                   <div className="flex items-center gap-1">
                     <Button
@@ -525,7 +539,7 @@ export default function MonitoringPage() {
                       onClick={() => setEvaluationsPage((page) => page - 1)}
                     >
                       <ChevronLeft />
-                      Previous
+                      {t('previousButton')}
                     </Button>
                     <Button
                       variant="outline"
@@ -533,7 +547,7 @@ export default function MonitoringPage() {
                       disabled={evaluationsPage >= lastPage}
                       onClick={() => setEvaluationsPage((page) => page + 1)}
                     >
-                      Next
+                      {t('nextButton')}
                       <ChevronRight />
                     </Button>
                   </div>
@@ -547,11 +561,9 @@ export default function MonitoringPage() {
       {panel === 'overrides' ? (
         <Card>
           <CardHeader>
-            <CardTitle>Override history</CardTitle>
+            <CardTitle>{t('overrideHistoryCardTitle')}</CardTitle>
             <CardDescription>
-              While active, an override forces the flag's value and bypasses its
-              targeting rules. Lifting one returns the flag to its configured
-              state; the row stays here as the trail of who forced what and why.
+              {t('overrideHistoryCardDescription')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -566,20 +578,18 @@ export default function MonitoringPage() {
             >
               <DialogTrigger render={<Button size="sm" />}>
                 <ShieldAlert />
-                New override
+                {t('newOverrideButton')}
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Record an override</DialogTitle>
+                  <DialogTitle>{t('newOverrideDialogTitle')}</DialogTitle>
                   <DialogDescription>
-                    This forces the flag immediately and supersedes any override
-                    already active on it. The flag's own configuration is left
-                    untouched, so lifting the override restores it.
+                    {t('newOverrideDialogDescription')}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="override-flag">Flag</Label>
+                    <Label htmlFor="override-flag">{t('flagLabel')}</Label>
                     <select
                       id="override-flag"
                       className="h-9 w-full rounded-lg border border-border bg-muted px-2 text-sm text-foreground"
@@ -591,7 +601,7 @@ export default function MonitoringPage() {
                         })
                       }
                     >
-                      <option value="">Select a flag</option>
+                      <option value="">{t('selectAFlagOption')}</option>
                       {flags.map((flag) => (
                         <option key={flag.id} value={flag.id}>
                           {flag.key} — {flag.name}
@@ -601,7 +611,7 @@ export default function MonitoringPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="override-state">New state</Label>
+                    <Label htmlFor="override-state">{t('newStateLabel')}</Label>
                     <select
                       id="override-state"
                       className="h-9 w-full rounded-lg border border-border bg-muted px-2 text-sm text-foreground"
@@ -613,16 +623,18 @@ export default function MonitoringPage() {
                         })
                       }
                     >
-                      <option value="disabled">Disabled (kill switch)</option>
-                      <option value="enabled">Enabled</option>
+                      <option value="disabled">
+                        {t('disabledKillSwitchOption')}
+                      </option>
+                      <option value="enabled">{t('enabledOption')}</option>
                     </select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="override-reason">Reason</Label>
+                    <Label htmlFor="override-reason">{t('reasonLabel')}</Label>
                     <Input
                       id="override-reason"
-                      placeholder="e.g., payment provider outage"
+                      placeholder={t('reasonPlaceholder')}
                       value={newOverride.reason}
                       onChange={(event) =>
                         setNewOverride({
@@ -638,7 +650,7 @@ export default function MonitoringPage() {
                     variant="outline"
                     onClick={() => setIsDialogOpen(false)}
                   >
-                    Cancel
+                    {t('cancelButton')}
                   </Button>
                   <Button
                     onClick={handleCreateOverride}
@@ -647,7 +659,7 @@ export default function MonitoringPage() {
                     }
                   >
                     {isSaving ? <Spinner size="sm" /> : null}
-                    Record override
+                    {t('recordOverrideButton')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -656,19 +668,19 @@ export default function MonitoringPage() {
             {overrides.length === 0 ? (
               <EmptyState
                 icon={ShieldAlert}
-                title="No overrides recorded"
-                description="Use an override when you need to force a flag on or off and leave a reason behind."
+                title={t('noOverridesTitle')}
+                description={t('noOverridesDescription')}
               />
             ) : (
               <Table>
                 <TableHeader className="[&_th]:text-muted-foreground">
                   <TableRow>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Forces</TableHead>
-                    <TableHead>Flag</TableHead>
-                    <TableHead>Environment</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead>When</TableHead>
+                    <TableHead>{t('statusHeader')}</TableHead>
+                    <TableHead>{t('forcesHeader')}</TableHead>
+                    <TableHead>{t('flagHeader')}</TableHead>
+                    <TableHead>{t('environmentHeader')}</TableHead>
+                    <TableHead>{t('reasonHeader')}</TableHead>
+                    <TableHead>{t('whenHeader')}</TableHead>
                     <TableHead className="w-[90px]" />
                   </TableRow>
                 </TableHeader>
@@ -679,18 +691,22 @@ export default function MonitoringPage() {
                         {override.is_active ? (
                           <Badge variant="warning">
                             <StatusDot tone="warning" pulse />
-                            Active
+                            {t('activeStatus')}
                           </Badge>
                         ) : (
                           <Badge
                             variant="muted"
                             title={
                               override.cleared_at
-                                ? `Lifted ${formatTimestamp(override.cleared_at)}`
+                                ? t('liftedAtTitle', {
+                                    timestamp: formatTimestamp(
+                                      override.cleared_at,
+                                    ),
+                                  })
                                 : undefined
                             }
                           >
-                            Lifted
+                            {t('liftedStatus')}
                           </Badge>
                         )}
                       </TableCell>
@@ -698,7 +714,7 @@ export default function MonitoringPage() {
                         <Badge
                           variant={override.is_enabled ? 'success' : 'danger'}
                         >
-                          {override.is_enabled ? 'On' : 'Off'}
+                          {override.is_enabled ? t('onStatus') : t('offStatus')}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-foreground">
@@ -730,7 +746,7 @@ export default function MonitoringPage() {
                             {liftingOverrideId === override.id ? (
                               <Spinner size="sm" />
                             ) : null}
-                            Lift
+                            {t('liftButton')}
                           </Button>
                         ) : null}
                       </TableCell>
