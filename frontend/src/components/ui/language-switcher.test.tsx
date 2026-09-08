@@ -15,21 +15,92 @@ vi.mock('@/lib/toast-context', () => ({
 }));
 
 /**
- * Opening this menu is expensive under jsdom -- Base UI does real positioning
- * work -- and every test below opens it at least once. On a fast machine each
- * one lands just inside Vitest's 5s default; on CI's slower runner three of
- * them timed out. The budget is declared here rather than raised globally,
- * because 5s is the right default for every other test in the suite.
+ * The menu primitives are stood in for, and the reason is measured rather
+ * than assumed: mounting the real Base UI dropdown under jsdom costs about a
+ * second the first time and climbs to roughly six by the fourth mount in the
+ * same file -- six identical trivial tests measured 1.3s, 3.1s, 4.8s, 5.8s,
+ * 5.8s, 5.9s. Something each mount leaves behind is paid for by the next
+ * test. Six real mounts took 140s on CI, past the point where Vitest's worker
+ * reporter gives up, and the whole file failed while every assertion in it
+ * passed.
+ *
+ * So these tests exercise this component's own logic -- the async transition,
+ * the catch, the toast, and the fact that the checkmark follows the locale
+ * rather than the click. What they deliberately do NOT prove is that Base
+ * UI's radio group actually calls `onValueChange`; that is exactly one test,
+ * against the real primitives, in `language-switcher.wiring.test.tsx`. Adding
+ * a behaviour test here is free; adding one there is not.
+ *
+ * The stand-ins use `createElement` because a `vi.mock` factory is hoisted
+ * above the imports and cannot reach the JSX runtime at the top of the file.
  */
-const MENU_TIMEOUT = 30_000;
+vi.mock('@/components/ui/dropdown-menu', async () => {
+  const { createContext, createElement, cloneElement, useContext } =
+    await import('react');
 
-// Base UI's menu opens synchronously here -- there is no animation to wait
-// out under jsdom (`data-instant="click"`) -- so the item is queryable right
-// after the click. `waitFor` is deliberately not used: it pairs a
-// MutationObserver with Base UI's own positioning updates and never settles
-// in this environment, hanging the test until it times out.
-function openMenu() {
-  fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  const RadioContext = createContext<{
+    value?: string;
+    onValueChange?: (value: string) => void;
+  }>({});
+
+  return {
+    DropdownMenu: ({ children }: { children?: React.ReactNode }) =>
+      createElement('div', null, children),
+
+    // The real trigger takes Base UI's `render` prop -- an element to clone
+    // and merge props into -- so cloning it here keeps the Button's
+    // `aria-label` and `disabled`, which two of these tests assert on.
+    DropdownMenuTrigger: ({
+      render,
+      children,
+    }: {
+      render: React.ReactElement;
+      children?: React.ReactNode;
+    }) => cloneElement(render, {}, children),
+
+    DropdownMenuContent: ({ children }: { children?: React.ReactNode }) =>
+      createElement('div', null, children),
+
+    DropdownMenuRadioGroup: ({
+      value,
+      onValueChange,
+      children,
+    }: {
+      value?: string;
+      onValueChange?: (value: string) => void;
+      children?: React.ReactNode;
+    }) =>
+      createElement(
+        RadioContext.Provider,
+        { value: { value, onValueChange } },
+        children,
+      ),
+
+    DropdownMenuRadioItem: ({
+      value,
+      children,
+    }: {
+      value: string;
+      children?: React.ReactNode;
+    }) => {
+      const group = useContext(RadioContext);
+      return createElement(
+        'button',
+        {
+          type: 'button',
+          role: 'menuitemradio',
+          'aria-checked': group.value === value ? 'true' : 'false',
+          onClick: () => group.onValueChange?.(value),
+        },
+        children,
+      );
+    },
+  };
+});
+
+/** With the primitives stood in for, the items are always in the document. */
+function item(label: string) {
+  return screen.getByRole('menuitemradio', { name: label });
 }
 
 describe('LanguageSwitcher', () => {
@@ -41,139 +112,88 @@ describe('LanguageSwitcher', () => {
     showError.mockReset();
   });
 
-  it(
-    'renders both languages and marks the current one',
-    () => {
-      renderWithIntl(
-        <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
-      );
-      openMenu();
+  it('renders both languages and marks the current one', () => {
+    renderWithIntl(
+      <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
+    );
 
-      const current = screen.getByRole('menuitemradio', {
-        name: LOCALE_LABELS.en,
-      });
-      const other = screen.getByRole('menuitemradio', {
-        name: LOCALE_LABELS.es,
-      });
-      expect(current).toHaveAttribute('aria-checked', 'true');
-      expect(other).toHaveAttribute('aria-checked', 'false');
-    },
-    MENU_TIMEOUT,
-  );
+    expect(item(LOCALE_LABELS.en)).toHaveAttribute('aria-checked', 'true');
+    expect(item(LOCALE_LABELS.es)).toHaveAttribute('aria-checked', 'false');
+  });
 
-  it(
-    'invokes the action with the chosen locale',
-    () => {
-      renderWithIntl(
-        <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
-      );
-      openMenu();
+  it('invokes the action with the chosen locale', () => {
+    renderWithIntl(
+      <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
+    );
 
-      fireEvent.click(
-        screen.getByRole('menuitemradio', { name: LOCALE_LABELS.es }),
-      );
+    fireEvent.click(item(LOCALE_LABELS.es));
 
-      expect(changeLocaleAction).toHaveBeenCalledWith('es');
-    },
-    MENU_TIMEOUT,
-  );
+    expect(changeLocaleAction).toHaveBeenCalledWith('es');
+  });
 
   /**
-   * `onValueChange` used to `void` this promise. The radio group had already
-   * moved visually by the time a rejected cookie write surfaced, and nobody
-   * was ever told the switch did not take -- this is the regression test for
-   * that swallowed rejection.
+   * `onValueChange` used to `void` this promise, which discarded a rejected
+   * cookie write outright: nobody was ever told the switch did not take. This
+   * is the regression test for that swallowed rejection.
    */
-  it(
-    'shows an error toast when the action rejects',
-    async () => {
-      changeLocaleAction.mockRejectedValue(new Error('network down'));
-      renderWithIntl(
-        <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
-      );
-      openMenu();
+  it('shows an error toast when the action rejects', async () => {
+    changeLocaleAction.mockRejectedValue(new Error('network down'));
+    renderWithIntl(
+      <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
+    );
 
-      fireEvent.click(
-        screen.getByRole('menuitemradio', { name: LOCALE_LABELS.es }),
-      );
+    fireEvent.click(item(LOCALE_LABELS.es));
+    // Awaiting the mock's own settled promise flushes the microtask queue up
+    // to and past the component's `catch`.
+    await changeLocaleAction.mock.results[0]?.value.catch(() => {});
 
-      // Awaiting the mock's own settled promise, rather than polling with
-      // `waitFor` (its interval never gets a turn here -- see `openMenu`),
-      // flushes the microtask queue up to and past the component's `catch`.
-      await changeLocaleAction.mock.results[0]?.value.catch(() => {});
-
-      expect(showError).toHaveBeenCalledTimes(1);
-    },
-    MENU_TIMEOUT,
-  );
+    expect(showError).toHaveBeenCalledTimes(1);
+  });
 
   /**
    * `value={locale}` is controlled by the locale the server rendered, so a
    * failed switch has to leave the selection where it was. If the group
    * tracked the click instead, the menu would go on claiming a language the
-   * cookie never took -- an error toast plus a checkmark that contradicts it.
+   * cookie never took -- an error toast beside a checkmark contradicting it.
    */
-  it(
-    'leaves the selection on the real locale when the action rejects',
-    async () => {
-      changeLocaleAction.mockRejectedValue(new Error('network down'));
-      renderWithIntl(
-        <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
-      );
-      openMenu();
+  it('leaves the selection on the real locale when the action rejects', async () => {
+    changeLocaleAction.mockRejectedValue(new Error('network down'));
+    renderWithIntl(
+      <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
+    );
 
-      fireEvent.click(
-        screen.getByRole('menuitemradio', { name: LOCALE_LABELS.es }),
-      );
-      await changeLocaleAction.mock.results[0]?.value.catch(() => {});
+    fireEvent.click(item(LOCALE_LABELS.es));
+    await changeLocaleAction.mock.results[0]?.value.catch(() => {});
 
-      openMenu();
-      expect(
-        screen.getByRole('menuitemradio', { name: LOCALE_LABELS.en }),
-      ).toHaveAttribute('aria-checked', 'true');
-      expect(
-        screen.getByRole('menuitemradio', { name: LOCALE_LABELS.es }),
-      ).toHaveAttribute('aria-checked', 'false');
-    },
-    MENU_TIMEOUT,
-  );
+    expect(item(LOCALE_LABELS.en)).toHaveAttribute('aria-checked', 'true');
+    expect(item(LOCALE_LABELS.es)).toHaveAttribute('aria-checked', 'false');
+  });
 
-  it(
-    'shows no error toast when the action succeeds',
-    async () => {
-      renderWithIntl(
-        <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
-      );
-      openMenu();
+  it('shows no error toast when the action succeeds', async () => {
+    renderWithIntl(
+      <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
+    );
 
-      fireEvent.click(
-        screen.getByRole('menuitemradio', { name: LOCALE_LABELS.es }),
-      );
+    fireEvent.click(item(LOCALE_LABELS.es));
+    await changeLocaleAction.mock.results[0]?.value;
 
-      await changeLocaleAction.mock.results[0]?.value;
+    // Anchored on a positive assertion first. On its own,
+    // `not.toHaveBeenCalled` cannot tell "the switch succeeded quietly" apart
+    // from "the switch never ran": a refactor that stopped calling the action
+    // would leave `showError` untouched and this test green over a dead
+    // control.
+    expect(changeLocaleAction).toHaveBeenCalledWith('es');
+    expect(showError).not.toHaveBeenCalled();
+  });
 
-      // Anchored on a positive assertion first. On its own, `not.toHaveBeenCalled`
-      // cannot tell "the switch succeeded quietly" apart from "the switch never
-      // ran": a refactor that stopped calling the action would leave `showError`
-      // untouched and this test green over a dead control.
-      expect(changeLocaleAction).toHaveBeenCalledWith('es');
-      expect(showError).not.toHaveBeenCalled();
-    },
-    MENU_TIMEOUT,
-  );
+  it('has an accessible, keyboard-reachable trigger', () => {
+    renderWithIntl(
+      <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
+    );
 
-  it(
-    'has an accessible, keyboard-reachable trigger',
-    () => {
-      renderWithIntl(
-        <LanguageSwitcher changeLocaleAction={changeLocaleAction} />,
-      );
-
-      const trigger = screen.getByRole('button', { name: 'Language' });
-      expect(trigger).toHaveAccessibleName('Language');
-      expect(trigger).not.toHaveAttribute('disabled');
-      expect(trigger.tagName).toBe('BUTTON');
-    },
-    MENU_TIMEOUT,
-  );
+    const trigger = screen.getByRole('button', { name: 'Language' });
+    expect(trigger).toHaveAccessibleName('Language');
+    expect(trigger).not.toHaveAttribute('disabled');
+    expect(trigger.tagName).toBe('BUTTON');
+  });
 });
