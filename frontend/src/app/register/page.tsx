@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +24,7 @@ import { safeNextPath } from '@/lib/utils';
 // node_modules/next/dist/docs/.../use-search-params.md). The form is split
 // out so the Suspense boundary wraps only the part that needs it.
 function RegisterForm() {
+  const t = useTranslations('register');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -59,10 +61,10 @@ function RegisterForm() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-foreground">
-            Flagward
+            {t('title')}
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground">
-            Create an account to get started
+            {t('description')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -77,12 +79,12 @@ function RegisterForm() {
             )}
             <div className="space-y-2">
               <Label htmlFor="username" className="text-muted-foreground">
-                Username
+                {t('usernameLabel')}
               </Label>
               <Input
                 id="username"
                 type="text"
-                placeholder="Choose a username"
+                placeholder={t('usernamePlaceholder')}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -90,12 +92,12 @@ function RegisterForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="email" className="text-muted-foreground">
-                Email
+                {t('emailLabel')}
               </Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder={t('emailPlaceholder')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -103,12 +105,12 @@ function RegisterForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password" className="text-muted-foreground">
-                Password
+                {t('passwordLabel')}
               </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Choose a password"
+                placeholder={t('passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -117,15 +119,15 @@ function RegisterForm() {
           </CardContent>
           <CardFooter className="flex flex-col gap-3 pt-4">
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Creating account...' : 'Create account'}
+              {isLoading ? t('creatingAccount') : t('createAccount')}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
-              Already have an account?{' '}
+              {t('alreadyHaveAccount')}{' '}
               <Link
                 href={loginHref}
                 className="text-foreground underline-offset-4 hover:underline"
               >
-                Sign in
+                {t('signIn')}
               </Link>
             </p>
           </CardFooter>

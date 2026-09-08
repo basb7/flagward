@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderWithIntl } from '@/test/i18n';
 
 const push = vi.fn();
 let searchParams = new URLSearchParams();
@@ -44,7 +45,7 @@ describe('the register page', () => {
     // alert role is what makes the failure reach them -- and it is also the
     // only thing a test can reliably grab it by.
     register.mockRejectedValue(new Error('A user with that name exists'));
-    render(<RegisterPage />);
+    renderWithIntl(<RegisterPage />);
 
     fillAndSubmit();
 
@@ -54,7 +55,7 @@ describe('the register page', () => {
   });
 
   it('shows nothing before a submit has failed', async () => {
-    render(<RegisterPage />);
+    renderWithIntl(<RegisterPage />);
     await waitFor(() =>
       expect(screen.getByLabelText('Username')).toBeInTheDocument(),
     );
@@ -64,7 +65,7 @@ describe('the register page', () => {
 
   it('falls back to a generic message when the failure carries none', async () => {
     register.mockRejectedValue('not an Error');
-    render(<RegisterPage />);
+    renderWithIntl(<RegisterPage />);
 
     fillAndSubmit();
 
@@ -77,7 +78,7 @@ describe('the register page', () => {
     register.mockResolvedValue({
       user: { id: 1, username: 'ada', email: 'ada@example.com' },
     });
-    render(<RegisterPage />);
+    renderWithIntl(<RegisterPage />);
 
     fillAndSubmit();
 
@@ -90,7 +91,7 @@ describe('the register page', () => {
     register.mockResolvedValue({
       user: { id: 1, username: 'ada', email: 'ada@example.com' },
     });
-    render(<RegisterPage />);
+    renderWithIntl(<RegisterPage />);
 
     fillAndSubmit();
 
@@ -104,7 +105,7 @@ describe('the register page', () => {
     register.mockResolvedValue({
       user: { id: 1, username: 'ada', email: 'ada@example.com' },
     });
-    render(<RegisterPage />);
+    renderWithIntl(<RegisterPage />);
 
     fillAndSubmit();
 

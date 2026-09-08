@@ -14,12 +14,87 @@
     "token_expired": "This password reset link has expired. Ask for a new one.",
     "token_not_found": "This password reset link is not valid."
   },
+  "forgotPassword": {
+    "backToSignIn": "Back to sign in",
+    "checkInboxDescription": "If an address like <strong>{email}</strong> has an account, a reset link is on its way. Check your inbox.",
+    "checkInboxTitle": "Check your inbox",
+    "description": "Enter your email and we'll send you a reset link",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "genericError": "Failed to send the reset link.",
+    "rateLimitError": "Please wait a bit before trying again.",
+    "rememberedPassword": "Remembered your password?",
+    "signIn": "Sign in",
+    "submit": "Send reset link",
+    "title": "Forgot password?"
+  },
+  "invite": {
+    "accept": "Accept invitation",
+    "acceptFailedToast": "Failed to accept the invitation.",
+    "acceptedToast": "Invitation accepted -- welcome aboard.",
+    "createAccount": "Create an account",
+    "invalidLinkMessage": "This invitation link is not valid any more.",
+    "invalidTitle": "Invitation not valid",
+    "joinOrganization": "Join <strong>{organizationName}</strong> as",
+    "noAccountPrompt": "Sign in or create an account to accept. You'll be brought right back here.",
+    "signIn": "Sign in",
+    "signedInAs": "Signed in as <strong>{username}</strong>{emailSuffix}. Confirming joins <strong>this account</strong> to {organizationName}.",
+    "switchAccount": "Not you? Sign out and sign in as someone else",
+    "title": "You're invited"
+  },
   "languageSwitcher": {
     "error": "Could not change the language. Please try again.",
     "label": "Language"
   },
+  "login": {
+    "createAccount": "Create one",
+    "description": "Enter your credentials to access the dashboard",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in...",
+    "title": "Flagward",
+    "usernameLabel": "Username",
+    "usernamePlaceholder": "Enter your username"
+  },
   "metadata": {
     "description": "A SaaS feature flags platform with local SDK evaluation and real-time SSE synchronization",
     "title": "Flagward - Feature Flag Management"
+  },
+  "register": {
+    "alreadyHaveAccount": "Already have an account?",
+    "createAccount": "Create account",
+    "creatingAccount": "Creating account...",
+    "description": "Create an account to get started",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "Choose a password",
+    "signIn": "Sign in",
+    "title": "Flagward",
+    "usernameLabel": "Username",
+    "usernamePlaceholder": "Choose a username"
+  },
+  "resetPassword": {
+    "confirmPasswordLabel": "Confirm password",
+    "confirmPasswordPlaceholder": "Re-enter the new password",
+    "description": "Enter a new password for your account",
+    "doneDescription": "Your password has been reset.",
+    "doneTitle": "Password reset",
+    "genericError": "Failed to reset the password.",
+    "linkAlreadyUsed": "This password reset link has already been used.",
+    "linkExpired": "This password reset link has expired.",
+    "linkInvalid": "This password reset link is invalid.",
+    "linkNotValidTitle": "Link not valid",
+    "newPasswordLabel": "New password",
+    "newPasswordPlaceholder": "Choose a new password",
+    "passwordHint": "At least {minLength} characters. Avoid common or all-numeric passwords.",
+    "passwordsMismatch": "Passwords do not match.",
+    "requestNewLink": "Request a new reset link",
+    "signIn": "Sign in",
+    "submit": "Reset password",
+    "title": "Choose a new password"
   }
 }

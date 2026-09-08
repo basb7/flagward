@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,14 +19,6 @@ import { useAuth } from '@/lib/auth-context';
 import { useErrorCopy } from '@/lib/error-copy';
 import { useToast } from '@/lib/toast-context';
 
-/**
- * The backend answers every invalid preview state -- unknown, expired,
- * revoked, already used -- with the identical generic 404, deliberately, so
- * this screen can never become a way to probe a token. Whatever the reason,
- * there is exactly one honest message for it.
- */
-const INVALID_LINK_MESSAGE = 'This invitation link is not valid any more.';
-
 type PreviewState =
   | { status: 'loading' }
   | { status: 'invalid' }
@@ -37,6 +30,12 @@ export default function InvitePage() {
   const { success, error: showError, info } = useToast();
   const { user, isLoading: isAuthLoading, logout } = useAuth();
   const errorCopy = useErrorCopy();
+  const t = useTranslations('invite');
+  // The backend answers every invalid preview state -- unknown, expired,
+  // revoked, already used -- with the identical generic 404, deliberately,
+  // so this screen can never become a way to probe a token. Whatever the
+  // reason, there is exactly one honest message for it.
+  const INVALID_LINK_MESSAGE = t('invalidLinkMessage');
 
   const [preview, setPreview] = useState<PreviewState>({ status: 'loading' });
   const [isAccepting, setIsAccepting] = useState(false);
@@ -67,7 +66,7 @@ export default function InvitePage() {
     setIsAccepting(true);
     try {
       await invitationsApi.accept(token);
-      success('Invitation accepted -- welcome aboard.');
+      success(t('acceptedToast'));
       router.push('/dashboard');
     } catch (err) {
       if (err instanceof ApiError) {
@@ -86,7 +85,7 @@ export default function InvitePage() {
           setPreview({ status: 'invalid' });
         }
       } else {
-        showError('Failed to accept the invitation.');
+        showError(t('acceptFailedToast'));
       }
     } finally {
       setIsAccepting(false);
@@ -111,7 +110,7 @@ export default function InvitePage() {
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Invitation not valid</CardTitle>
+            <CardTitle>{t('invalidTitle')}</CardTitle>
             <CardDescription>{INVALID_LINK_MESSAGE}</CardDescription>
           </CardHeader>
         </Card>
@@ -124,14 +123,15 @@ export default function InvitePage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-foreground">
-            You&apos;re invited
+            {t('title')}
           </CardTitle>
           <CardDescription className="flex flex-wrap items-center gap-1.5">
-            Join{' '}
-            <strong className="text-foreground">
-              {preview.organizationName}
-            </strong>{' '}
-            as
+            {t.rich('joinOrganization', {
+              organizationName: preview.organizationName,
+              strong: (chunks) => (
+                <strong className="text-foreground">{chunks}</strong>
+              ),
+            })}
             <Badge variant={preview.role === 'ADMIN' ? 'warning' : 'muted'}>
               {preview.role}
             </Badge>
@@ -141,24 +141,26 @@ export default function InvitePage() {
           {user ? (
             <div className="space-y-2 rounded-md border border-border bg-muted p-3 text-sm">
               <p className="text-muted-foreground">
-                Signed in as{' '}
-                <strong className="text-foreground">{user.username}</strong>
-                {user.email ? ` (${user.email})` : ''}. Confirming joins{' '}
-                <strong className="text-foreground">this account</strong> to{' '}
-                {preview.organizationName}.
+                {t.rich('signedInAs', {
+                  username: user.username,
+                  emailSuffix: user.email ? ` (${user.email})` : '',
+                  organizationName: preview.organizationName,
+                  strong: (chunks) => (
+                    <strong className="text-foreground">{chunks}</strong>
+                  ),
+                })}
               </p>
               <button
                 type="button"
                 onClick={handleSignOutAndSwitch}
                 className="text-xs text-muted-foreground underline-offset-4 hover:underline"
               >
-                Not you? Sign out and sign in as someone else
+                {t('switchAccount')}
               </button>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Sign in or create an account to accept. You&apos;ll be brought
-              right back here.
+              {t('noAccountPrompt')}
             </p>
           )}
         </CardContent>
@@ -170,7 +172,7 @@ export default function InvitePage() {
               disabled={isAccepting}
             >
               {isAccepting ? <Spinner size="sm" className="mr-2" /> : null}
-              Accept invitation
+              {t('accept')}
             </Button>
           ) : (
             <>
@@ -180,7 +182,7 @@ export default function InvitePage() {
                   router.push(`/login?next=${encodeURIComponent(returnHere)}`)
                 }
               >
-                Sign in
+                {t('signIn')}
               </Button>
               <Button
                 variant="outline"
@@ -191,7 +193,7 @@ export default function InvitePage() {
                   )
                 }
               >
-                Create an account
+                {t('createAccount')}
               </Button>
             </>
           )}

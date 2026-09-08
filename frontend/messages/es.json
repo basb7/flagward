@@ -14,12 +14,87 @@
     "token_expired": "Este enlace para restablecer la contraseña ha expirado. Solicite uno nuevo.",
     "token_not_found": "Este enlace para restablecer la contraseña no es válido."
   },
+  "forgotPassword": {
+    "backToSignIn": "Volver a iniciar sesión",
+    "checkInboxDescription": "Si una dirección como <strong>{email}</strong> tiene una cuenta, un enlace de restablecimiento está en camino. Revise su bandeja de entrada.",
+    "checkInboxTitle": "Revise su bandeja de entrada",
+    "description": "Ingrese su correo electrónico y le enviaremos un enlace de restablecimiento",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "nombre@ejemplo.com",
+    "genericError": "No se pudo enviar el enlace de restablecimiento.",
+    "rateLimitError": "Espere un momento antes de volver a intentarlo.",
+    "rememberedPassword": "¿Recordó su contraseña?",
+    "signIn": "Iniciar sesión",
+    "submit": "Enviar enlace de restablecimiento",
+    "title": "¿Olvidó su contraseña?"
+  },
+  "invite": {
+    "accept": "Aceptar invitación",
+    "acceptFailedToast": "No se pudo aceptar la invitación.",
+    "acceptedToast": "Invitación aceptada. Le damos la bienvenida.",
+    "createAccount": "Crear una cuenta",
+    "invalidLinkMessage": "Este enlace de invitación ya no es válido.",
+    "invalidTitle": "Invitación no válida",
+    "joinOrganization": "Unirse a <strong>{organizationName}</strong> como",
+    "noAccountPrompt": "Inicie sesión o cree una cuenta para aceptar. Volverá aquí mismo.",
+    "signIn": "Iniciar sesión",
+    "signedInAs": "Sesión iniciada como <strong>{username}</strong>{emailSuffix}. Al confirmar, se une <strong>esta cuenta</strong> a {organizationName}.",
+    "switchAccount": "¿No es usted? Cierre sesión e inicie sesión como otra persona",
+    "title": "Tiene una invitación"
+  },
   "languageSwitcher": {
     "error": "No se pudo cambiar el idioma. Vuelva a intentarlo.",
     "label": "Idioma"
   },
+  "login": {
+    "createAccount": "Cree una",
+    "description": "Ingrese sus credenciales para acceder al panel",
+    "forgotPassword": "¿Olvidó su contraseña?",
+    "noAccount": "¿No tiene una cuenta?",
+    "passwordLabel": "Contraseña",
+    "passwordPlaceholder": "Ingrese su contraseña",
+    "signIn": "Iniciar sesión",
+    "signingIn": "Iniciando sesión...",
+    "title": "Flagward",
+    "usernameLabel": "Nombre de usuario",
+    "usernamePlaceholder": "Ingrese su nombre de usuario"
+  },
   "metadata": {
     "description": "Una plataforma SaaS de feature flags con evaluación local mediante SDK y sincronización en tiempo real por SSE.",
     "title": "Flagward - Gestión de Feature Flags"
+  },
+  "register": {
+    "alreadyHaveAccount": "¿Ya tiene una cuenta?",
+    "createAccount": "Crear cuenta",
+    "creatingAccount": "Creando cuenta...",
+    "description": "Cree una cuenta para comenzar",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "nombre@ejemplo.com",
+    "passwordLabel": "Contraseña",
+    "passwordPlaceholder": "Elija una contraseña",
+    "signIn": "Iniciar sesión",
+    "title": "Flagward",
+    "usernameLabel": "Nombre de usuario",
+    "usernamePlaceholder": "Elija un nombre de usuario"
+  },
+  "resetPassword": {
+    "confirmPasswordLabel": "Confirmar contraseña",
+    "confirmPasswordPlaceholder": "Vuelva a ingresar la nueva contraseña",
+    "description": "Ingrese una nueva contraseña para su cuenta",
+    "doneDescription": "Su contraseña ha sido restablecida.",
+    "doneTitle": "Contraseña restablecida",
+    "genericError": "No se pudo restablecer la contraseña.",
+    "linkAlreadyUsed": "Este enlace para restablecer la contraseña ya ha sido utilizado.",
+    "linkExpired": "Este enlace para restablecer la contraseña ha expirado.",
+    "linkInvalid": "Este enlace para restablecer la contraseña no es válido.",
+    "linkNotValidTitle": "Enlace no válido",
+    "newPasswordLabel": "Nueva contraseña",
+    "newPasswordPlaceholder": "Elija una nueva contraseña",
+    "passwordHint": "Al menos {minLength} caracteres. Evite contraseñas comunes o completamente numéricas.",
+    "passwordsMismatch": "Las contraseñas no coinciden.",
+    "requestNewLink": "Solicitar un nuevo enlace de restablecimiento",
+    "signIn": "Iniciar sesión",
+    "submit": "Restablecer contraseña",
+    "title": "Elija una nueva contraseña"
   }
 }

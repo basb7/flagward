@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,15 +30,16 @@ const MIN_PASSWORD_LENGTH = 8;
 function describePasswordResetConfirmError(
   status: number,
   message: string,
+  t: (key: string) => string,
 ): string | null {
   if (status === 404 && message === 'token_not_found') {
-    return 'This password reset link is invalid.';
+    return t('linkInvalid');
   }
   if (status === 409 && message === 'token_already_used') {
-    return 'This password reset link has already been used.';
+    return t('linkAlreadyUsed');
   }
   if (status === 410 && message === 'token_expired') {
-    return 'This password reset link has expired.';
+    return t('linkExpired');
   }
   return null;
 }
@@ -46,6 +48,7 @@ type LinkState = { status: 'form' } | { status: 'invalid'; message: string };
 
 export default function ResetPasswordPage() {
   const { token } = useParams<{ token: string }>();
+  const t = useTranslations('resetPassword');
   const errorCopy = useErrorCopy();
 
   const [password, setPassword] = useState('');
@@ -75,6 +78,7 @@ export default function ResetPasswordPage() {
         const linkErrorMessage = describePasswordResetConfirmError(
           err.status,
           err.message,
+          t,
         );
         if (linkErrorMessage) {
           setLinkState({ status: 'invalid', message: linkErrorMessage });
@@ -89,7 +93,7 @@ export default function ResetPasswordPage() {
           setError(errorCopy(err.message));
         }
       } else {
-        setError('Failed to reset the password.');
+        setError(t('genericError'));
       }
     } finally {
       setIsLoading(false);
@@ -102,7 +106,7 @@ export default function ResetPasswordPage() {
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold text-center text-foreground">
-              Link not valid
+              {t('linkNotValidTitle')}
             </CardTitle>
             <CardDescription className="text-center text-muted-foreground">
               {linkState.message}
@@ -113,7 +117,7 @@ export default function ResetPasswordPage() {
               href="/forgot-password"
               className="text-center text-sm text-foreground underline-offset-4 hover:underline"
             >
-              Request a new reset link
+              {t('requestNewLink')}
             </Link>
           </CardFooter>
         </Card>
@@ -127,15 +131,15 @@ export default function ResetPasswordPage() {
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold text-center text-foreground">
-              Password reset
+              {t('doneTitle')}
             </CardTitle>
             <CardDescription className="text-center text-muted-foreground">
-              Your password has been reset.
+              {t('doneDescription')}
             </CardDescription>
           </CardHeader>
           <CardFooter className="flex flex-col gap-3 pt-4">
             <Link href="/login" className="w-full">
-              <Button className="w-full">Sign in</Button>
+              <Button className="w-full">{t('signIn')}</Button>
             </Link>
           </CardFooter>
         </Card>
@@ -150,10 +154,10 @@ export default function ResetPasswordPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-foreground">
-            Choose a new password
+            {t('title')}
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground">
-            Enter a new password for your account
+            {t('description')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -168,13 +172,13 @@ export default function ResetPasswordPage() {
             )}
             <div className="space-y-2">
               <Label htmlFor="password" className="text-muted-foreground">
-                New password
+                {t('newPasswordLabel')}
               </Label>
               <Input
                 id="password"
                 type="password"
                 aria-describedby="password-hint"
-                placeholder="Choose a new password"
+                placeholder={t('newPasswordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -186,8 +190,7 @@ export default function ResetPasswordPage() {
                 error rather than being guessed here.
               */}
               <p id="password-hint" className="text-xs text-muted-foreground">
-                At least {MIN_PASSWORD_LENGTH} characters. Avoid common or
-                all-numeric passwords.
+                {t('passwordHint', { minLength: MIN_PASSWORD_LENGTH })}
               </p>
               {passwordErrorItems.length > 0 && (
                 <ul className="list-disc space-y-0.5 pl-4 text-xs text-destructive">
@@ -202,19 +205,19 @@ export default function ResetPasswordPage() {
                 htmlFor="confirm-password"
                 className="text-muted-foreground"
               >
-                Confirm password
+                {t('confirmPasswordLabel')}
               </Label>
               <Input
                 id="confirm-password"
                 type="password"
-                placeholder="Re-enter the new password"
+                placeholder={t('confirmPasswordPlaceholder')}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
               />
               {passwordsMismatch && (
                 <p className="text-xs text-destructive">
-                  Passwords do not match.
+                  {t('passwordsMismatch')}
                 </p>
               )}
             </div>
@@ -226,7 +229,7 @@ export default function ResetPasswordPage() {
               disabled={isLoading || !canSubmit}
             >
               {isLoading ? <Spinner size="sm" className="mr-2" /> : null}
-              Reset password
+              {t('submit')}
             </Button>
           </CardFooter>
         </form>
