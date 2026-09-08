@@ -449,6 +449,8 @@ re-exports the core — you install one package, not two.
 | --- | --- |
 | [`@flagward/react`](https://www.npmjs.com/package/@flagward/react) | React 18+ |
 | [`@flagward/vue`](https://www.npmjs.com/package/@flagward/vue) | Vue 3.5+ |
+| [`@flagward/solid`](https://www.npmjs.com/package/@flagward/solid) | Solid 1.8+ |
+| [`@flagward/svelte`](https://www.npmjs.com/package/@flagward/svelte) | Svelte 4 and 5 |
 | [`@flagward/core`](https://www.npmjs.com/package/@flagward/core) | everything else: a plain script, a server, a framework with no adapter yet |
 
 The API key is the environment's, from the dashboard. A key scopes the SDK to
@@ -530,6 +532,113 @@ const user = ref({ plan: "free" });
 app.use(flagward({ apiKey, context: user }));   // application-wide
 useFlag("beta", () => ({ plan: user.value.plan }));  // or for one call
 ```
+
+### Solid
+
+```bash
+npm install @flagward/solid
+```
+
+```tsx
+import { render } from "solid-js/web";
+import { Show } from "solid-js";
+import { FlagwardProvider, useFlag } from "@flagward/solid";
+
+render(
+  () => (
+    <FlagwardProvider apiKey="your-environment-api-key" host="http://localhost:8000">
+      <Checkout />
+    </FlagwardProvider>
+  ),
+  document.getElementById("root")!,
+);
+
+function Checkout() {
+  const flag = useFlag("new-checkout");
+
+  // Accessors, so the parentheses are the subscription: `flag.value()`, not
+  // `flag.value`. Same caveat as above -- undefined while loading, and for a
+  // key this environment does not have.
+  return (
+    <Show when={!flag.isLoading()} fallback={<LegacyCheckout />}>
+      <Show when={flag.value()} fallback={<LegacyCheckout />}>
+        <NewCheckout />
+      </Show>
+    </Show>
+  );
+}
+```
+
+The context can be a signal, at either level:
+
+```tsx
+const [user, setUser] = createSignal({ plan: "free" });
+
+<FlagwardProvider apiKey={apiKey} context={user}>  // application-wide
+useFlag("beta", () => ({ plan: user().plan }));    // or for one call
+```
+
+### Svelte
+
+```bash
+npm install @flagward/svelte
+```
+
+Nothing is wrapped in a provider — Svelte's context is a plain function, so
+this is one call in a root component's `<script>`:
+
+```svelte
+<!-- +layout.svelte, or your root component -->
+<script>
+  import { setFlagward } from "@flagward/svelte";
+
+  setFlagward({
+    apiKey: "your-environment-api-key",
+    host: "http://localhost:8000",
+  });
+</script>
+
+{@render children()}
+```
+
+```svelte
+<script>
+  import { useFlag } from "@flagward/svelte";
+
+  // One store whose value is an object, so read it through `$`. Same caveat
+  // as above: undefined while loading, and for a key this environment does
+  // not have.
+  const flag = useFlag("new-checkout");
+</script>
+
+{#if $flag.isLoading}
+  <LegacyCheckout />
+{:else if $flag.value}
+  <NewCheckout />
+{:else}
+  <LegacyCheckout />
+{/if}
+```
+
+The context can be a store, at either level:
+
+```ts
+const user = writable({ plan: "free" });
+
+setFlagward({ apiKey, context: user });   // application-wide
+useFlag("beta", user);                    // or for one call
+```
+
+Built on `svelte/store`, which ships in Svelte 5 unchanged, so one package
+covers Svelte 4 and 5 and `$flag` works in runes-mode components too.
+
+**In SvelteKit**, this works with nothing to configure, but a component has no
+`"use client"` marker — it renders on the server for the first request and
+again in the browser. The SDK's first read does not finish inside a server
+render, so the HTML always ships the loading state and the real value arrives
+on hydration. To resolve a flag before the HTML is sent, read it in a
+`+page.server.ts` with `@flagward/core` as shown below. The package's README
+covers the trade-offs.
 
 ### Without a framework
 
@@ -756,10 +865,10 @@ Written by the SDK surface, never edited by hand.
 Filters: `/sdk-registrations/?environment=&sdk_type=&version=`,
 `/evaluations/?flag=&environment=&result=true|false`.
 
-Each SDK registers under its own `sdk_type`, so one environment can hold a
-`REACT` row and a `VUE` row at once. `SDKType` does not declare those two yet
-and Django does not validate choices on save, so they are stored and returned
-as sent — filter by the literal value. Declaring them is
+Each SDK registers under its own `sdk_type`, so one environment can hold
+`REACT`, `VUE`, `SOLID` and `SVELTE` rows at once. `SDKType` declares none of
+those four yet and Django does not validate choices on save, so they are
+stored and returned as sent — filter by the literal value. Declaring them is
 [open work](https://github.com/basb7/flagward-sdk-js); nothing needs to change
 in an SDK when it lands.
 
