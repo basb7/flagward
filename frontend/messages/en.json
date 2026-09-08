@@ -14,6 +14,10 @@
     "token_expired": "This password reset link has expired. Ask for a new one.",
     "token_not_found": "This password reset link is not valid."
   },
+  "languageSwitcher": {
+    "error": "Could not change the language. Please try again.",
+    "label": "Language"
+  },
   "metadata": {
     "description": "A SaaS feature flags platform with local SDK evaluation and real-time SSE synchronization",
     "title": "Flagward - Feature Flag Management"

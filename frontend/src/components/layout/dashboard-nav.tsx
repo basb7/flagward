@@ -28,6 +28,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { LanguageSwitcher } from '@/components/ui/language-switcher';
+import { changeLocaleAction } from '@/i18n/actions';
 import {
   type OrganizationDeletionImpact,
   type ProjectDeletionImpact,
@@ -329,6 +331,8 @@ export function DashboardNav() {
                 }
               />
             ) : null}
+
+            <LanguageSwitcher changeLocaleAction={changeLocaleAction} />
 
             <DropdownMenu>
               <DropdownMenuTrigger

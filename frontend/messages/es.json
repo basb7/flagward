@@ -14,6 +14,10 @@
     "token_expired": "Este enlace para restablecer la contraseña ha expirado. Solicite uno nuevo.",
     "token_not_found": "Este enlace para restablecer la contraseña no es válido."
   },
+  "languageSwitcher": {
+    "error": "No se pudo cambiar el idioma. Vuelva a intentarlo.",
+    "label": "Idioma"
+  },
   "metadata": {
     "description": "Una plataforma SaaS de feature flags con evaluación local mediante SDK y sincronización en tiempo real por SSE.",
     "title": "Flagward - Gestión de Feature Flags"
