@@ -76,3 +76,6 @@ frontend/playwright/.cache/
 
 # CodeGraph local index
 .codegraph/
+
+# macOS
+.DS_Store
