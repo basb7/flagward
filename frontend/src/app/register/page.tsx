@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -57,7 +58,20 @@ function RegisterForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background">
+      {/*
+        Decorative on purpose: the card title below already reads "Flagward",
+        so giving the mark its own alt text would have a screen reader
+        announce the name twice.
+      */}
+      <Image
+        src="/logo.png"
+        alt=""
+        width={38}
+        height={48}
+        className="h-12 w-auto"
+        priority
+      />
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-foreground">
