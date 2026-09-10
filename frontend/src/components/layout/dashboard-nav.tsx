@@ -12,6 +12,7 @@ import {
   User,
   Users,
 } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -171,9 +172,19 @@ export function DashboardNav() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-14 items-center justify-between gap-4">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="flex size-6 items-center justify-center rounded-md bg-foreground text-background">
-              <Flag className="size-3.5" />
-            </span>
+            {/*
+              Decorative on purpose: the link already reads as the brand name
+              from the text beside it, so giving the mark its own alt text
+              would have a screen reader announce the name twice.
+            */}
+            <Image
+              src="/logo.png"
+              alt=""
+              width={19}
+              height={24}
+              className="h-6 w-auto"
+              priority
+            />
             <span className="font-heading text-sm font-semibold tracking-tight">
               {t('brandName')}
             </span>
