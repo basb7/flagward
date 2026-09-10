@@ -540,6 +540,9 @@
     "submit": "Reset password",
     "title": "Choose a new password"
   },
+  "skeleton": {
+    "loading": "Loading content"
+  },
   "spinner": {
     "loading": "Loading"
   },

@@ -540,6 +540,9 @@
     "submit": "Restablecer contraseña",
     "title": "Elija una nueva contraseña"
   },
+  "skeleton": {
+    "loading": "Cargando contenido"
+  },
   "spinner": {
     "loading": "Cargando"
   },
