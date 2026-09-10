@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
+import { DataTableSkeleton } from '@/components/dashboard/skeletons/data-table-skeleton';
+import { StatCardsSkeleton } from '@/components/dashboard/skeletons/stat-cards-skeleton';
 import { Badge, StatusDot } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +34,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
 import { Spinner } from '@/components/ui/spinner';
 import { StatCard } from '@/components/ui/stat-card';
@@ -228,8 +231,16 @@ export default function MonitoringPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Spinner size="lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+        <LoadingRegion className="space-y-6">
+          <StatCardsSkeleton count={3} className="sm:grid-cols-3" />
+          <Card>
+            <CardContent>
+              <DataTableSkeleton columns={7} />
+            </CardContent>
+          </Card>
+        </LoadingRegion>
       </div>
     );
   }

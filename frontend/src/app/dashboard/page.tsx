@@ -17,6 +17,7 @@ import { EvaluationsChart } from '@/components/charts/evaluations-chart';
 import { CreateEnvironmentDialog } from '@/components/dashboard/create-environment-dialog';
 import { CreateOrganizationDialog } from '@/components/dashboard/create-organization-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
+import { StatCardsSkeleton } from '@/components/dashboard/skeletons/stat-cards-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,8 +28,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/ui/stat-card';
 import {
   type AnalyticsOverview,
@@ -50,6 +52,27 @@ const RANGES = [
 
 function formatRate(rate: number | null) {
   return rate === null ? '—' : `${Math.round(rate * 100)}%`;
+}
+
+/**
+ * The overview's loading shape: four stat cards, the 3/2 chart row and the
+ * top-flags panel. Mirrors the real layout below so nothing shifts when the
+ * data lands. Both the tenant load and the analytics load show the same page,
+ * so they show the same skeleton. The page title/description render for real
+ * above this (see both call sites below) rather than as part of it: they are
+ * static translated strings available on first render, not data in flight.
+ */
+function OverviewSkeleton() {
+  return (
+    <LoadingRegion className="space-y-6">
+      <StatCardsSkeleton count={4} />
+      <div className="grid gap-4 lg:grid-cols-5">
+        <Skeleton className="h-64 lg:col-span-3" />
+        <Skeleton className="h-64 lg:col-span-2" />
+      </div>
+      <Skeleton className="h-40 w-full" />
+    </LoadingRegion>
+  );
 }
 
 export default function DashboardPage() {
@@ -126,8 +149,12 @@ export default function DashboardPage() {
 
   if (isTenantLoading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Spinner size="lg" />
+      <div className="space-y-6">
+        <PageHeader
+          title={t('overviewTitle')}
+          description={t('overviewDescription')}
+        />
+        <OverviewSkeleton />
       </div>
     );
   }
@@ -207,8 +234,12 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Spinner size="lg" />
+      <div className="space-y-6">
+        <PageHeader
+          title={t('overviewTitle')}
+          description={t('overviewDescription')}
+        />
+        <OverviewSkeleton />
       </div>
     );
   }

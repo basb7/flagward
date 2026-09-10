@@ -357,6 +357,7 @@
     "grantTargetEnvironmentLabel": "Environment",
     "grantsCardDescription": "{hasProject, select, yes {Project and environment roles held on this project and its environments.} no {Select a project from the switcher above to see its grants.} other {}}",
     "grantsCardTitle": "{hasProject, select, yes {Grants on {projectName}} no {Project and environment grants} other {}}",
+    "grantsLoadingLabel": "Loading grants",
     "inviteByLinkButton": "Invite by link",
     "inviteByLinkDialogDescription": "Creates a single-use link. Whoever opens it confirms and joins with the role you pick here -- the plaintext token is only ever shown once, right after you create it.",
     "inviteByLinkDialogTitle": "Invite by link",
@@ -382,6 +383,7 @@
     "noProjectSelectedTitle": "No project selected",
     "orgMembersCardDescription": "{count} member(s) of {organizationName}. Grant a project or environment role to give access beyond org.view.",
     "orgMembersCardTitle": "Organization members",
+    "orgMembersLoadingLabel": "Loading organization members",
     "orgRoleOptionAdmin": "Admin — full key to the account",
     "orgRoleOptionUser": "User — org.view only, nothing about projects",
     "organizationRoleHeader": "Organization role",
@@ -390,6 +392,7 @@
     "pageTitle": "Members",
     "pendingInvitationsCardDescription": "Single-use links waiting to be opened. Revoking one invalidates it immediately. Accepted, expired and already-revoked invitations don't show up here.",
     "pendingInvitationsCardTitle": "Pending invitations",
+    "pendingInvitationsLoadingLabel": "Loading pending invitations",
     "previewButton": "Preview",
     "previewErrorFallback": "Failed to preview",
     "previewGainsNothing": "gains nothing new",
@@ -539,6 +542,9 @@
     "signIn": "Sign in",
     "submit": "Reset password",
     "title": "Choose a new password"
+  },
+  "skeleton": {
+    "loading": "Loading content"
   },
   "spinner": {
     "loading": "Loading"

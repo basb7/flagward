@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
+import { DataTableSkeleton } from '@/components/dashboard/skeletons/data-table-skeleton';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -23,7 +24,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
@@ -215,9 +218,35 @@ export default function RulesPage() {
   };
 
   if (isLoading) {
+    // The back button navigates away regardless of whether `flag` has
+    // loaded, so it renders for real here too, matching the resolved
+    // layout below. The description interpolates `flag.key`, which is not
+    // yet available -- so unlike the title, it stays a skeleton.
     return (
-      <div className="flex justify-center items-center py-16">
-        <Spinner size="lg" />
+      <div className="space-y-6">
+        <div className="flex items-start gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/dashboard/flags')}
+            aria-label={t('backToFlagsLabel')}
+            className="mt-1 text-muted-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <PageHeader
+            className="flex-1"
+            title={t('pageTitle')}
+            description={<Skeleton className="h-4 w-72" />}
+          />
+        </div>
+        <LoadingRegion className="space-y-6">
+          <Card>
+            <CardContent>
+              <DataTableSkeleton columns={4} />
+            </CardContent>
+          </Card>
+        </LoadingRegion>
       </div>
     );
   }
