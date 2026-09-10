@@ -4,6 +4,7 @@ import { Lock, MoreHorizontal, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
+import { DataTableSkeleton } from '@/components/dashboard/skeletons/data-table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
@@ -199,8 +201,15 @@ export default function FlagsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center py-16">
-        <Spinner size="lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+        <LoadingRegion className="space-y-6">
+          <Card>
+            <CardContent>
+              <DataTableSkeleton columns={6} />
+            </CardContent>
+          </Card>
+        </LoadingRegion>
       </div>
     );
   }
