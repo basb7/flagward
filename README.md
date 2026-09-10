@@ -1,3 +1,8 @@
+<p align="center">
+  <!-- Decorative: the H1 below already reads "Flagward". -->
+  <img src="frontend/public/logo.png" alt="" width="76" />
+</p>
+
 # Flagward
 
 [![CI](https://github.com/basb7/flagward/actions/workflows/ci.yml/badge.svg)](https://github.com/basb7/flagward/actions/workflows/ci.yml)
