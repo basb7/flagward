@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DataTableSkeleton } from '@/components/dashboard/skeletons/data-table-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,7 +35,9 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
@@ -650,9 +653,33 @@ export default function MembersPage() {
   };
 
   if (isTenantLoading) {
+    // The description interpolates `currentOrganization.name`, which is
+    // still null at this point (tenant data has not arrived yet) -- so
+    // unlike the title, it stays a skeleton rather than rendering for real.
     return (
-      <div className="flex items-center justify-center py-16">
-        <Spinner size="lg" />
+      <div className="space-y-6">
+        <PageHeader
+          title={t('pageTitle')}
+          description={<Skeleton className="h-4 w-80" />}
+        />
+        <LoadingRegion className="space-y-6">
+          <Skeleton className="h-20 w-full" />
+          <Card>
+            <CardContent>
+              <DataTableSkeleton columns={3} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent>
+              <DataTableSkeleton columns={4} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent>
+              <DataTableSkeleton columns={5} />
+            </CardContent>
+          </Card>
+        </LoadingRegion>
       </div>
     );
   }
@@ -812,9 +839,9 @@ export default function MembersPage() {
         </CardHeader>
         <CardContent>
           {isLoadingMembers ? (
-            <div className="flex justify-center py-8">
-              <Spinner size="lg" />
-            </div>
+            <LoadingRegion label={t('orgMembersLoadingLabel')}>
+              <DataTableSkeleton columns={3} />
+            </LoadingRegion>
           ) : orgMembers.length === 0 ? (
             <EmptyState
               icon={UserPlus}
@@ -915,9 +942,9 @@ export default function MembersPage() {
         </CardHeader>
         <CardContent>
           {isLoadingInvitations ? (
-            <div className="flex justify-center py-8">
-              <Spinner size="lg" />
-            </div>
+            <LoadingRegion label={t('pendingInvitationsLoadingLabel')}>
+              <DataTableSkeleton columns={4} />
+            </LoadingRegion>
           ) : pendingInvitations.length === 0 ? (
             <EmptyState
               icon={Mail}
@@ -1002,9 +1029,9 @@ export default function MembersPage() {
               description={t('noProjectSelectedDescription')}
             />
           ) : isLoadingGrants ? (
-            <div className="flex justify-center py-8">
-              <Spinner size="lg" />
-            </div>
+            <LoadingRegion label={t('grantsLoadingLabel')}>
+              <DataTableSkeleton columns={5} />
+            </LoadingRegion>
           ) : grantRows.length === 0 ? (
             <EmptyState
               icon={UserPlus}

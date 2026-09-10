@@ -14,6 +14,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { CreateEnvironmentDialog } from '@/components/dashboard/create-environment-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
+import { DataTableSkeleton } from '@/components/dashboard/skeletons/data-table-skeleton';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -23,8 +24,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
-import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
   TableBody,
@@ -96,8 +97,15 @@ export default function EnvironmentsPage() {
 
   if (isTenantLoading) {
     return (
-      <div className="flex justify-center items-center py-16">
-        <Spinner size="lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+        <LoadingRegion className="space-y-6">
+          <Card>
+            <CardContent>
+              <DataTableSkeleton columns={4} />
+            </CardContent>
+          </Card>
+        </LoadingRegion>
       </div>
     );
   }
@@ -169,8 +177,15 @@ export default function EnvironmentsPage() {
 
   if (isLoading || !currentProject) {
     return (
-      <div className="flex justify-center items-center py-16">
-        <Spinner size="lg" />
+      <div className="space-y-6">
+        <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+        <LoadingRegion className="space-y-6">
+          <Card>
+            <CardContent>
+              <DataTableSkeleton columns={4} />
+            </CardContent>
+          </Card>
+        </LoadingRegion>
       </div>
     );
   }
