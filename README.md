@@ -29,6 +29,24 @@ client in real time over SSE.
 > **not** safe for a deployment. Read [SECURITY.md](SECURITY.md#deployment-hardening)
 > before exposing an instance.
 
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Docker Compose](#docker-compose)
+- [Creating Your First Flag](#creating-your-first-flag)
+- [Consuming flags from your app](#consuming-flags-from-your-app)
+- [Project Structure](#project-structure)
+- [API Endpoints](#api-endpoints)
+- [Flag Evaluation](#flag-evaluation)
+- [Known Limitations](#known-limitations)
+- [Models](#models)
+- [Environment Variables](#environment-variables)
+- [Development](#development)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
+
 ## Architecture
 
 ```
