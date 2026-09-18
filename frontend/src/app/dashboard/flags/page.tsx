@@ -552,16 +552,17 @@ export default function FlagsPage() {
                               />
                             )}
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeVariantRow(index)}
-                            disabled={variantRows.length <= 1}
-                            aria-label={t('removeVariantAriaLabel')}
-                          >
-                            &times;
-                          </Button>
+                          {row.is_control ? null : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeVariantRow(index)}
+                              aria-label={t('removeVariantAriaLabel')}
+                            >
+                              &times;
+                            </Button>
+                          )}
                         </div>
                       ))}
                     </div>

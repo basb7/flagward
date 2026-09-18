@@ -100,6 +100,8 @@ describe('FlagsPage create dialog', () => {
     expect(percentageInputs[0]).toHaveValue(0);
     expect(screen.getByText('100%')).toBeInTheDocument();
     expect(screen.getByText('Control (default)')).toBeInTheDocument();
+    // The control row cannot be deleted: only the added rows have one.
+    expect(screen.getAllByLabelText('Remove variant')).toHaveLength(1);
     expect(
       screen.queryByRole('switch', { name: 'Control' }),
     ).not.toBeInTheDocument();
