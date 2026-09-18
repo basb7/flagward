@@ -494,20 +494,22 @@ export default function FlagsPage() {
                     <div className="space-y-2">
                       {variantRows.map((row, index) => (
                         <div key={row.id} className="flex items-end gap-2">
-                          <Input
-                            placeholder={t('variantNamePlaceholder')}
-                            value={row.name}
-                            onChange={(e) =>
-                              updateVariantRow(index, {
-                                name: e.target.value,
-                              })
-                            }
-                          />
-                          {row.is_control ? (
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              {t('variantControlLabel')}
-                            </span>
-                          ) : null}
+                          <div className="min-w-0 flex-1">
+                            {row.is_control ? (
+                              <span className="mb-1 block text-xs text-muted-foreground">
+                                {t('variantControlLabel')}
+                              </span>
+                            ) : null}
+                            <Input
+                              placeholder={t('variantNamePlaceholder')}
+                              value={row.name}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  name: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
                           <div className="flex flex-col gap-1">
                             <span className="flex items-center gap-1 text-xs text-muted-foreground">
                               {t('variantWeightLabel')}

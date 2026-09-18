@@ -631,17 +631,19 @@ export default function RulesPage() {
               <div className="space-y-3">
                 {variantDrafts.map((row, index) => (
                   <div key={row.id} className="flex items-end gap-2">
-                    <Input
-                      value={row.name}
-                      onChange={(e) =>
-                        updateVariantDraft(index, { name: e.target.value })
-                      }
-                    />
-                    {row.is_control ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {t('variantControlLabel')}
-                      </span>
-                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      {row.is_control ? (
+                        <span className="mb-1 block text-xs text-muted-foreground">
+                          {t('variantControlLabel')}
+                        </span>
+                      ) : null}
+                      <Input
+                        value={row.name}
+                        onChange={(e) =>
+                          updateVariantDraft(index, { name: e.target.value })
+                        }
+                      />
+                    </div>
                     <div className="flex flex-col gap-1">
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         {t('variantWeightLabel')}
