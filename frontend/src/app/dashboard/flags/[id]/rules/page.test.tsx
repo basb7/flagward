@@ -23,6 +23,16 @@ vi.mock('@/lib/api', () => ({
   variantsApi: { replaceSet: vi.fn() },
 }));
 
+// Variant sliders mirror the manual percentage inputs, so display-value
+// queries match twice -- this scopes them to the number inputs.
+function numberInputWithValue(value: string) {
+  const matches = screen
+    .getAllByDisplayValue(value)
+    .filter((el) => (el as HTMLInputElement).type === 'number');
+  expect(matches).toHaveLength(1);
+  return matches[0];
+}
+
 describe('RulesPage loading state', () => {
   it('renders the announcing skeleton region instead of the spinner while rule data loads', () => {
     renderWithIntl(<RulesPage />);
@@ -255,8 +265,38 @@ describe('RulesPage variant editing', () => {
 
     expect(screen.getByDisplayValue('control')).toBeInTheDocument();
     expect(screen.getByDisplayValue('treatment')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('60')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('40')).toBeInTheDocument();
+    // The sliders mirror the same values, so scope to the manual inputs.
+    expect(numberInputWithValue('60')).toBeInTheDocument();
+    expect(numberInputWithValue('40')).toBeInTheDocument();
+
+    vi.doUnmock('@/lib/api');
+  });
+
+  it('moving a variant slider updates its manual percentage input', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/api', () => ({
+      flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
+      rulesApi: {
+        list: vi.fn(() => Promise.resolve({ results: [] })),
+        create: vi.fn(),
+      },
+      conditionsApi: {},
+      variantsApi: { replaceSet: vi.fn() },
+    }));
+    const { default: RulesPageWithData } = await import('./page');
+    renderWithIntl(<RulesPageWithData />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Variant Breakdown')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    // Same hidden-thumb pattern as the rollout slider: query the range input.
+    const sliders = document.body.querySelectorAll('input[type="range"]');
+    expect(sliders.length).toBeGreaterThan(0);
+    fireEvent.change(sliders[0], { target: { value: '30' } });
+
+    expect(numberInputWithValue('30')).toBeInTheDocument();
 
     vi.doUnmock('@/lib/api');
   });
@@ -281,7 +321,7 @@ describe('RulesPage variant editing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    fireEvent.change(screen.getByDisplayValue('60'), {
+    fireEvent.change(numberInputWithValue('60'), {
       target: { value: '50' },
     });
 
@@ -314,10 +354,10 @@ describe('RulesPage variant editing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    fireEvent.change(screen.getByDisplayValue('60'), {
+    fireEvent.change(numberInputWithValue('60'), {
       target: { value: '70' },
     });
-    fireEvent.change(screen.getByDisplayValue('40'), {
+    fireEvent.change(numberInputWithValue('40'), {
       target: { value: '30' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));

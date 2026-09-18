@@ -586,37 +586,51 @@ export default function RulesPage() {
             {isEditingVariants ? (
               <div className="space-y-3">
                 {variantDrafts.map((row, index) => (
-                  <div key={row.id} className="flex items-center gap-2">
-                    <Input
-                      value={row.name}
-                      onChange={(e) =>
-                        updateVariantDraft(index, { name: e.target.value })
-                      }
-                    />
-                    <Input
-                      type="number"
-                      value={row.percentage_allocation}
-                      onChange={(e) =>
+                  <div key={row.id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={row.name}
+                        onChange={(e) =>
+                          updateVariantDraft(index, { name: e.target.value })
+                        }
+                      />
+                      <Input
+                        type="number"
+                        value={row.percentage_allocation}
+                        onChange={(e) =>
+                          updateVariantDraft(index, {
+                            percentage_allocation: e.target.value,
+                          })
+                        }
+                        className="w-24"
+                      />
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <Switch
+                          checked={row.is_control}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              updateVariantDraft(index, { is_control: true });
+                            }
+                          }}
+                          aria-label={t('variantControlLabel')}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {t('variantControlLabel')}
+                        </span>
+                      </div>
+                    </div>
+                    <Slider
+                      min={0}
+                      max={100}
+                      value={[Number(row.percentage_allocation) || 0]}
+                      onValueChange={(value) =>
                         updateVariantDraft(index, {
-                          percentage_allocation: e.target.value,
+                          percentage_allocation: String(
+                            Array.isArray(value) ? value[0] : value,
+                          ),
                         })
                       }
-                      className="w-24"
                     />
-                    <div className="flex items-center gap-1.5 whitespace-nowrap">
-                      <Switch
-                        checked={row.is_control}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            updateVariantDraft(index, { is_control: true });
-                          }
-                        }}
-                        aria-label={t('variantControlLabel')}
-                      />
-                      <span className="text-xs text-muted-foreground">
-                        {t('variantControlLabel')}
-                      </span>
-                    </div>
                   </div>
                 ))}
                 {variantDraftTotal !== 100 ? (

@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
+import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -451,73 +452,91 @@ export default function FlagsPage() {
                     </Label>
                     <div className="space-y-2">
                       {variantRows.map((row, index) => (
-                        <div key={row.id} className="flex items-center gap-2">
-                          <Input
-                            placeholder={t('variantNamePlaceholder')}
-                            value={row.name}
-                            onChange={(e) =>
-                              updateVariantRow(index, { name: e.target.value })
-                            }
-                          />
-                          <Input
-                            type="number"
-                            placeholder={t('variantPercentagePlaceholder')}
-                            value={row.percentage_allocation}
-                            onChange={(e) =>
+                        <div key={row.id} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              placeholder={t('variantNamePlaceholder')}
+                              value={row.name}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  name: e.target.value,
+                                })
+                              }
+                            />
+                            <Input
+                              type="number"
+                              placeholder={t('variantPercentagePlaceholder')}
+                              value={row.percentage_allocation}
+                              onChange={(e) =>
+                                updateVariantRow(index, {
+                                  percentage_allocation: e.target.value,
+                                })
+                              }
+                              className="w-24"
+                            />
+                            <div className="flex items-center gap-1.5 whitespace-nowrap">
+                              <Switch
+                                checked={row.is_control}
+                                onCheckedChange={(checked) => {
+                                  // Exactly one control per flag: turning one
+                                  // on turns every other row off, and turning
+                                  // the active one off is a no-op -- there is
+                                  // always exactly one, never zero.
+                                  if (checked) {
+                                    updateVariantRow(index, {
+                                      is_control: true,
+                                    });
+                                  }
+                                }}
+                                aria-label={t('variantControlLabel')}
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {t('variantControlLabel')}
+                              </span>
+                            </div>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-6 text-muted-foreground"
+                                    aria-label={t(
+                                      'variantControlTooltipAriaLabel',
+                                    )}
+                                  />
+                                }
+                              >
+                                <Info className="size-3.5" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t('variantControlTooltip')}
+                              </TooltipContent>
+                            </Tooltip>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeVariantRow(index)}
+                              disabled={variantRows.length <= 1}
+                              aria-label={t('removeVariantAriaLabel')}
+                            >
+                              &times;
+                            </Button>
+                          </div>
+                          <Slider
+                            min={0}
+                            max={100}
+                            value={[Number(row.percentage_allocation) || 0]}
+                            onValueChange={(value) =>
                               updateVariantRow(index, {
-                                percentage_allocation: e.target.value,
+                                percentage_allocation: String(
+                                  Array.isArray(value) ? value[0] : value,
+                                ),
                               })
                             }
-                            className="w-24"
                           />
-                          <div className="flex items-center gap-1.5 whitespace-nowrap">
-                            <Switch
-                              checked={row.is_control}
-                              onCheckedChange={(checked) => {
-                                // Exactly one control per flag: turning one
-                                // on turns every other row off, and turning
-                                // the active one off is a no-op -- there is
-                                // always exactly one, never zero.
-                                if (checked) {
-                                  updateVariantRow(index, { is_control: true });
-                                }
-                              }}
-                              aria-label={t('variantControlLabel')}
-                            />
-                            <span className="text-xs text-muted-foreground">
-                              {t('variantControlLabel')}
-                            </span>
-                          </div>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-6 text-muted-foreground"
-                                  aria-label={t(
-                                    'variantControlTooltipAriaLabel',
-                                  )}
-                                />
-                              }
-                            >
-                              <Info className="size-3.5" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {t('variantControlTooltip')}
-                            </TooltipContent>
-                          </Tooltip>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeVariantRow(index)}
-                            disabled={variantRows.length <= 1}
-                            aria-label={t('removeVariantAriaLabel')}
-                          >
-                            &times;
-                          </Button>
                         </div>
                       ))}
                     </div>
