@@ -410,3 +410,86 @@ describe('RulesPage rule editing', () => {
     vi.doUnmock('@/lib/api');
   });
 });
+
+describe('RulesPage percentage split condition', () => {
+  it('shows a single slider instead of the attribute and value inputs', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/api', () => ({
+      flagsApi: { get: vi.fn(() => Promise.resolve(booleanFlag)) },
+      rulesApi: {
+        list: vi.fn(() => Promise.resolve({ results: [sampleRule] })),
+        create: vi.fn(),
+      },
+      conditionsApi: { create: vi.fn(() => Promise.resolve({})) },
+      variantsApi: { replaceSet: vi.fn() },
+    }));
+    const { default: RulesPageWithData } = await import('./page');
+    renderWithIntl(<RulesPageWithData />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Rule #5')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText('Condition'));
+
+    const operatorSelect = await screen.findByLabelText('Operator');
+    fireEvent.change(operatorSelect, {
+      target: { value: 'PERCENTAGE_SPLIT' },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText('Percentage Split')).toBeInTheDocument(),
+    );
+    // No trait needed: the attribute field hides, the slider takes over.
+    expect(screen.queryByLabelText('Attribute')).not.toBeInTheDocument();
+    expect(document.body.querySelector('input[type="range"]')).not.toBeNull();
+
+    vi.doUnmock('@/lib/api');
+  });
+
+  it('sends the wrapped percentage value with the user_id convention', async () => {
+    const createSpy = vi.fn(() => Promise.resolve({}));
+    vi.resetModules();
+    vi.doMock('@/lib/api', () => ({
+      flagsApi: { get: vi.fn(() => Promise.resolve(booleanFlag)) },
+      rulesApi: {
+        list: vi.fn(() => Promise.resolve({ results: [sampleRule] })),
+        create: vi.fn(),
+      },
+      conditionsApi: { create: createSpy },
+      variantsApi: { replaceSet: vi.fn() },
+    }));
+    const { default: RulesPageWithData } = await import('./page');
+    renderWithIntl(<RulesPageWithData />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Rule #5')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText('Condition'));
+
+    const operatorSelect = await screen.findByLabelText('Operator');
+    fireEvent.change(operatorSelect, {
+      target: { value: 'PERCENTAGE_SPLIT' },
+    });
+
+    await waitFor(() =>
+      expect(document.body.querySelector('input[type="range"]')).not.toBeNull(),
+    );
+    const slider = document.body.querySelector('input[type="range"]');
+    if (slider) fireEvent.change(slider, { target: { value: '60' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rule: 'rule-1',
+          attribute: 'user_id',
+          operator: 'PERCENTAGE_SPLIT',
+          value: { value: 60 },
+        }),
+      ),
+    );
+
+    vi.doUnmock('@/lib/api');
+  });
+});

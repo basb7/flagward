@@ -66,6 +66,7 @@ export default function RulesPage() {
     { value: 'LESS_THAN', label: t('operatorLessThan') },
     { value: 'IN_LIST', label: t('operatorInList') },
     { value: 'CONTAINS', label: t('operatorContains') },
+    { value: 'PERCENTAGE_SPLIT', label: t('operatorPercentageSplit') },
   ];
 
   const getOperatorLabel = (value: string) => {
@@ -269,6 +270,13 @@ export default function RulesPage() {
     let valueStr = '';
     if (Array.isArray(condition.value)) {
       valueStr = condition.value.join(', ');
+    } else if (
+      condition.operator === 'PERCENTAGE_SPLIT' &&
+      typeof condition.value === 'object' &&
+      condition.value !== null &&
+      'value' in condition.value
+    ) {
+      valueStr = String((condition.value as { value: unknown }).value ?? '');
     } else {
       valueStr = String(condition.value);
     }
@@ -286,15 +294,30 @@ export default function RulesPage() {
       let parsedValue: unknown = newCondition.value;
       if (newCondition.operator === 'IN_LIST') {
         parsedValue = newCondition.value.split(',').map((v) => v.trim());
+      } else if (newCondition.operator === 'PERCENTAGE_SPLIT') {
+        // Flagsmith-style % Split: the backend normalizes this into the
+        // wrapped `{"value": N}` shape and validates the 0-100 range.
+        // The attribute is meaningless here (the bucket comes from
+        // `user_id` alone), so an untouched field sends the convention.
+        parsedValue = { value: Number(newCondition.value) || 0 };
       } else if (
         ['GREATER_THAN', 'LESS_THAN'].includes(newCondition.operator)
       ) {
         parsedValue = Number(newCondition.value);
       }
 
+      // A % Split needs no trait: the bucket comes from `user_id` alone.
+      // An untouched attribute field sends that convention so the required
+      // model field is never blank.
+      const attribute =
+        newCondition.operator === 'PERCENTAGE_SPLIT' &&
+        newCondition.attribute.trim() === ''
+          ? 'user_id'
+          : newCondition.attribute;
+
       if (editingCondition) {
         await conditionsApi.update(editingCondition.id, {
-          attribute: newCondition.attribute,
+          attribute,
           operator: newCondition.operator,
           value: parsedValue,
         });
@@ -302,7 +325,7 @@ export default function RulesPage() {
       } else if (selectedRule) {
         await conditionsApi.create({
           rule: selectedRule.id,
-          attribute: newCondition.attribute,
+          attribute,
           operator: newCondition.operator,
           value: parsedValue,
         });
@@ -736,7 +759,12 @@ export default function RulesPage() {
                           <TableCell className="font-mono text-sm text-foreground">
                             {Array.isArray(condition.value)
                               ? condition.value.join(', ')
-                              : String(condition.value)}
+                              : condition.operator === 'PERCENTAGE_SPLIT' &&
+                                  typeof condition.value === 'object' &&
+                                  condition.value !== null &&
+                                  'value' in condition.value
+                                ? `${(condition.value as { value: unknown }).value}%`
+                                : String(condition.value)}
                           </TableCell>
                           <TableCell>
                             <div className="flex space-x-1">
@@ -810,22 +838,24 @@ export default function RulesPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="attribute" className="text-muted-foreground">
-                {t('attributeLabel')}
-              </Label>
-              <Input
-                id="attribute"
-                placeholder={t('attributePlaceholder')}
-                value={newCondition.attribute}
-                onChange={(e) =>
-                  setNewCondition({
-                    ...newCondition,
-                    attribute: e.target.value,
-                  })
-                }
-              />
-            </div>
+            {newCondition.operator === 'PERCENTAGE_SPLIT' ? null : (
+              <div className="space-y-2">
+                <Label htmlFor="attribute" className="text-muted-foreground">
+                  {t('attributeLabel')}
+                </Label>
+                <Input
+                  id="attribute"
+                  placeholder={t('attributePlaceholder')}
+                  value={newCondition.attribute}
+                  onChange={(e) =>
+                    setNewCondition({
+                      ...newCondition,
+                      attribute: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="operator" className="text-muted-foreground">
                 {t('operatorLabel')}
@@ -845,28 +875,59 @@ export default function RulesPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="value" className="text-muted-foreground">
-                {t('valueLabel')}
-              </Label>
-              <Input
-                id="value"
-                placeholder={
-                  newCondition.operator === 'IN_LIST'
-                    ? t('valuePlaceholderList')
-                    : t('valuePlaceholderDefault')
-                }
-                value={newCondition.value}
-                onChange={(e) =>
-                  setNewCondition({ ...newCondition, value: e.target.value })
-                }
-              />
-              {newCondition.operator === 'IN_LIST' && (
+            {newCondition.operator === 'PERCENTAGE_SPLIT' ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="split_value"
+                    className="text-muted-foreground"
+                  >
+                    {t('valueLabel')}
+                  </Label>
+                  <span className="font-mono text-sm text-foreground">
+                    {Number(newCondition.value) || 0}%
+                  </span>
+                </div>
+                <Slider
+                  id="split_value"
+                  min={0}
+                  max={100}
+                  value={[Number(newCondition.value) || 0]}
+                  onValueChange={(value) =>
+                    setNewCondition({
+                      ...newCondition,
+                      value: String(Array.isArray(value) ? value[0] : value),
+                    })
+                  }
+                />
                 <p className="text-xs text-muted-foreground/70">
-                  {t('inListHint')}
+                  {t('percentageSplitHint')}
                 </p>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="value" className="text-muted-foreground">
+                  {t('valueLabel')}
+                </Label>
+                <Input
+                  id="value"
+                  placeholder={
+                    newCondition.operator === 'IN_LIST'
+                      ? t('valuePlaceholderList')
+                      : t('valuePlaceholderDefault')
+                  }
+                  value={newCondition.value}
+                  onChange={(e) =>
+                    setNewCondition({ ...newCondition, value: e.target.value })
+                  }
+                />
+                {newCondition.operator === 'IN_LIST' && (
+                  <p className="text-xs text-muted-foreground/70">
+                    {t('inListHint')}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
