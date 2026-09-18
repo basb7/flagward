@@ -257,7 +257,10 @@
     "variantBreakdownTitle": "Variant Breakdown",
     "variantControlBadge": "Control (default)",
     "variantControlLabel": "Control",
-    "variantPercentageMismatchWarning": "Variant percentages must sum to 100 (currently {total})"
+    "variantPercentageMismatchWarning": "Variant percentages must sum to 100 (currently {total})",
+    "variantWeightLabel": "Weight",
+    "variantWeightTooltip": "Share of this flag's traffic served to this variant. All variants must add up to 100% — the control variant automatically keeps the remainder.",
+    "variantWeightTooltipAriaLabel": "What does the weight mean?"
   },
   "flagsPage": {
     "actionsHeader": "Actions",
@@ -314,6 +317,9 @@
     "variantNamePlaceholder": "e.g., control",
     "variantPercentageMismatchWarning": "Variant percentages must sum to 100 (currently {total})",
     "variantPercentagePlaceholder": "%",
+    "variantWeightLabel": "Weight",
+    "variantWeightTooltip": "Share of this flag's traffic served to this variant. All variants must add up to 100% — the control variant automatically keeps the remainder.",
+    "variantWeightTooltipAriaLabel": "What does the weight mean?",
     "variantsSectionTitle": "Variants"
   },
   "forgotPassword": {

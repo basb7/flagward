@@ -1,6 +1,6 @@
 'use client';
 
-import { Lock, MoreHorizontal, Plus } from 'lucide-react';
+import { Info, Lock, MoreHorizontal, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -43,6 +43,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   type Environment,
   environmentsApi,
@@ -488,7 +493,7 @@ export default function FlagsPage() {
                     </Label>
                     <div className="space-y-2">
                       {variantRows.map((row, index) => (
-                        <div key={row.id} className="flex items-center gap-2">
+                        <div key={row.id} className="flex items-end gap-2">
                           <Input
                             placeholder={t('variantNamePlaceholder')}
                             value={row.name}
@@ -498,25 +503,50 @@ export default function FlagsPage() {
                               })
                             }
                           />
-                          {row.is_control ? (
-                            <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
-                              {row.percentage_allocation}%
+                          <div className="flex flex-col gap-1">
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              {t('variantWeightLabel')}
+                              <Tooltip>
+                                <TooltipTrigger
+                                  render={
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-4 text-muted-foreground"
+                                      aria-label={t(
+                                        'variantWeightTooltipAriaLabel',
+                                      )}
+                                    />
+                                  }
+                                >
+                                  <Info className="size-3" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {t('variantWeightTooltip')}
+                                </TooltipContent>
+                              </Tooltip>
                             </span>
-                          ) : (
-                            <Input
-                              type="number"
-                              placeholder={t('variantPercentagePlaceholder')}
-                              value={row.percentage_allocation}
-                              onChange={(e) =>
-                                updateVariantRow(index, {
-                                  percentage_allocation: e.target.value,
-                                })
-                              }
-                              min={0}
-                              max={getNonControlHeadroom(variantRows, index)}
-                              className="w-24"
-                            />
-                          )}
+                            {row.is_control ? (
+                              <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
+                                {row.percentage_allocation}%
+                              </span>
+                            ) : (
+                              <Input
+                                type="number"
+                                placeholder={t('variantPercentagePlaceholder')}
+                                value={row.percentage_allocation}
+                                onChange={(e) =>
+                                  updateVariantRow(index, {
+                                    percentage_allocation: e.target.value,
+                                  })
+                                }
+                                min={0}
+                                max={getNonControlHeadroom(variantRows, index)}
+                                className="w-24"
+                              />
+                            )}
+                          </div>
                           <Button
                             type="button"
                             variant="ghost"

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Info, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -37,6 +37,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   type Condition,
   conditionsApi,
@@ -625,31 +630,54 @@ export default function RulesPage() {
             {isEditingVariants ? (
               <div className="space-y-3">
                 {variantDrafts.map((row, index) => (
-                  <div key={row.id} className="flex items-center gap-2">
+                  <div key={row.id} className="flex items-end gap-2">
                     <Input
                       value={row.name}
                       onChange={(e) =>
                         updateVariantDraft(index, { name: e.target.value })
                       }
                     />
-                    {row.is_control ? (
-                      <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
-                        {row.percentage_allocation}%
+                    <div className="flex flex-col gap-1">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        {t('variantWeightLabel')}
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-4 text-muted-foreground"
+                                aria-label={t('variantWeightTooltipAriaLabel')}
+                              />
+                            }
+                          >
+                            <Info className="size-3" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {t('variantWeightTooltip')}
+                          </TooltipContent>
+                        </Tooltip>
                       </span>
-                    ) : (
-                      <Input
-                        type="number"
-                        value={row.percentage_allocation}
-                        onChange={(e) =>
-                          updateVariantDraft(index, {
-                            percentage_allocation: e.target.value,
-                          })
-                        }
-                        min={0}
-                        max={getNonControlHeadroom(variantDrafts, index)}
-                        className="w-24"
-                      />
-                    )}
+                      {row.is_control ? (
+                        <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
+                          {row.percentage_allocation}%
+                        </span>
+                      ) : (
+                        <Input
+                          type="number"
+                          value={row.percentage_allocation}
+                          onChange={(e) =>
+                            updateVariantDraft(index, {
+                              percentage_allocation: e.target.value,
+                            })
+                          }
+                          min={0}
+                          max={getNonControlHeadroom(variantDrafts, index)}
+                          className="w-24"
+                        />
+                      )}
+                    </div>
                   </div>
                 ))}
                 <div className="flex justify-end gap-2">

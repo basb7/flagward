@@ -257,7 +257,10 @@
     "variantBreakdownTitle": "Reparto de variantes",
     "variantControlBadge": "Control (por defecto)",
     "variantControlLabel": "Control",
-    "variantPercentageMismatchWarning": "Los porcentajes de las variantes deben sumar 100 (actualmente {total})"
+    "variantPercentageMismatchWarning": "Los porcentajes de las variantes deben sumar 100 (actualmente {total})",
+    "variantWeightLabel": "Peso",
+    "variantWeightTooltip": "Porción del tráfico de este flag que recibe esta variante. Todas deben sumar 100% — la variante de control se queda automáticamente con el resto.",
+    "variantWeightTooltipAriaLabel": "¿Qué significa el peso?"
   },
   "flagsPage": {
     "actionsHeader": "Acciones",
@@ -314,6 +317,9 @@
     "variantNamePlaceholder": "p. ej., control",
     "variantPercentageMismatchWarning": "Los porcentajes de las variantes deben sumar 100 (actualmente {total})",
     "variantPercentagePlaceholder": "%",
+    "variantWeightLabel": "Peso",
+    "variantWeightTooltip": "Porción del tráfico de este flag que recibe esta variante. Todas deben sumar 100% — la variante de control se queda automáticamente con el resto.",
+    "variantWeightTooltipAriaLabel": "¿Qué significa el peso?",
     "variantsSectionTitle": "Variantes"
   },
   "forgotPassword": {
