@@ -318,6 +318,36 @@ class TestFlagEvaluationService:
         result = self.service.evaluate_flag(flag, {"plan": "enterprise"})
         assert result == "treatment_a"
 
+    def test_multivariate_rule_with_no_rollout_percentage_behaves_like_100(self):
+        """A rule with rollout_variant set but rollout_percentage left None
+        must not crash: it behaves like rollout_percentage=100 (the model's
+        documented default), so no user_id is needed to resolve it."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="multivariate-flag-no-percentage",
+            name="Multivariate Flag No Percentage",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=50, is_control=True)
+        treatment = Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
+        rule = StrategyRule.objects.create(
+            flag=flag,
+            priority=0,
+            operator_logic=OperatorLogic.AND,
+            rollout_variant=treatment,
+            rollout_percentage=None,
+        )
+        Condition.objects.create(
+            rule=rule,
+            attribute="plan",
+            operator=ConditionOperator.EQUALS,
+            value={"type": "string", "value": "enterprise"},
+        )
+
+        result = self.service.evaluate_flag(flag, {"plan": "enterprise"})
+        assert result == "treatment_a"
+
     def test_multivariate_rule_with_partial_rollout_uses_its_own_percentage(self):
         """A rule's own rollout_percentage is used instead of the flag's global split."""
         flag = FeatureFlag.objects.create(

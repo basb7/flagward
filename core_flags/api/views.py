@@ -237,6 +237,17 @@ class VariantViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.M
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        other_variants = instance.flag.variants.exclude(pk=instance.pk)
+        if not other_variants.exists():
+            return Response(
+                {"detail": "A multivariate flag must have at least one variant."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if instance.is_control:
+            return Response(
+                {"detail": "Reassign the control variant to another row before deleting it."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             self.perform_destroy(instance)
         except ProtectedError:

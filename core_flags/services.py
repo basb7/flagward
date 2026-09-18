@@ -70,9 +70,10 @@ class FlagEvaluationService:
             if rule.rollout_variant is None:
                 break
 
-            if rule.rollout_percentage is not None and rule.rollout_percentage >= 100:
-                # Every bucket value satisfies "< 100", so no hash -- and no
-                # user_id -- is needed to resolve this rule.
+            if rule.rollout_percentage is None or rule.rollout_percentage >= 100:
+                # None means "no percentage given", which behaves like the
+                # documented default of 100: every bucket value satisfies
+                # "< 100", so no hash -- and no user_id -- is needed here.
                 return rule.rollout_variant.name
 
             user_key = context.get("user_id")

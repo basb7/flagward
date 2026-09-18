@@ -572,6 +572,29 @@ class TestVariantViewSet:
         rule.refresh_from_db()
         assert rule.rollout_variant_id == variant.id
 
+    def test_reject_deleting_control_variant_while_others_remain(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        control = Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=50, is_control=True)
+        Variant.objects.create(flag=mv_flag, name="treatment", percentage_allocation=50, is_control=False)
+
+        response = client.delete(f"/api/v1/variants/{control.id}/")
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(id=control.id).exists()
+
+    def test_reject_deleting_the_only_remaining_variant(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        control = Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=100, is_control=True)
+
+        response = client.delete(f"/api/v1/variants/{control.id}/")
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(id=control.id).exists()
+
 
 @pytest.mark.django_db
 class TestFeatureFlagBulkVariants:
