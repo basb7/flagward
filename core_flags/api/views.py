@@ -164,24 +164,30 @@ class FeatureFlagViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewse
         )
 
     def _replace_variant_set(self, flag, variants_data):
-        existing_ids = set(flag.variants.values_list("id", flat=True))
+        existing_ids = {str(pk) for pk in flag.variants.values_list("id", flat=True)}
+
         submitted_ids = set()
         for item in variants_data:
-            if not isinstance(item, dict) or "id" not in item:
+            if not isinstance(item, dict):
                 return Response(
-                    {"variants": "Each variant must include the id of an existing variant on this flag."},
+                    {"variants": "Each variant must be an object."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            submitted_ids.add(str(item["id"]))
+            raw_id = item.get("id")
+            if raw_id is None:
+                continue
+            item_id = str(raw_id)
+            if item_id not in existing_ids:
+                return Response(
+                    {"variants": "id must belong to an existing variant on this flag, or be omitted to create one."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            submitted_ids.add(item_id)
 
-        if submitted_ids != {str(pk) for pk in existing_ids}:
+        removed_ids = existing_ids - submitted_ids
+        if removed_ids and StrategyRule.objects.filter(rollout_variant_id__in=removed_ids).exists():
             return Response(
-                {
-                    "variants": (
-                        "The submitted set must include every existing variant on this "
-                        "flag, with no additions or removals."
-                    )
-                },
+                {"variants": "One or more variants are forced by a strategy rule and cannot be removed."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -192,18 +198,35 @@ class FeatureFlagViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewse
         except serializers.ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
 
-        by_id = {str(item["id"]): validated[i] for i, item in enumerate(variants_data)}
-        with transaction.atomic():
-            updated = []
-            for variant in flag.variants.select_for_update():
-                data = by_id[str(variant.id)]
-                variant.name = data["name"]
-                variant.percentage_allocation = data["percentage_allocation"]
-                variant.is_control = bool(data.get("is_control", False))
-                variant.save(update_fields=["name", "percentage_allocation", "is_control"])
-                updated.append(variant)
+        try:
+            with transaction.atomic():
+                if removed_ids:
+                    flag.variants.filter(id__in=removed_ids).delete()
 
-        return Response(VariantSerializer(updated, many=True).data, status=status.HTTP_200_OK)
+                surviving = []
+                for item, data in zip(variants_data, validated):
+                    item_id = item.get("id")
+                    if item_id is None:
+                        variant = Variant.objects.create(
+                            flag=flag,
+                            name=data["name"],
+                            percentage_allocation=data["percentage_allocation"],
+                            is_control=bool(data.get("is_control", False)),
+                        )
+                    else:
+                        variant = flag.variants.select_for_update().get(id=item_id)
+                        variant.name = data["name"]
+                        variant.percentage_allocation = data["percentage_allocation"]
+                        variant.is_control = bool(data.get("is_control", False))
+                        variant.save(update_fields=["name", "percentage_allocation", "is_control"])
+                    surviving.append(variant)
+        except ProtectedError:
+            return Response(
+                {"variants": "One or more variants are forced by a strategy rule and cannot be removed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(VariantSerializer(surviving, many=True).data, status=status.HTTP_200_OK)
 
 
 class StrategyRuleViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ModelViewSet):

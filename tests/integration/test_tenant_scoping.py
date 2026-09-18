@@ -845,10 +845,67 @@ class TestFeatureFlagReplaceVariants:
         control.refresh_from_db()
         assert control.percentage_allocation == 50
 
-    def test_replace_rejects_a_set_missing_an_existing_variant(
+    def test_replace_can_remove_an_existing_variant(
         self, api_client, user, grant, tenant_a, mv_flag
     ):
-        control, _treatment = self._existing_pair(mv_flag)
+        control, treatment = self._existing_pair(mv_flag)
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 100, "is_control": True},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert not Variant.objects.filter(id=treatment.id).exists()
+        control.refresh_from_db()
+        assert control.percentage_allocation == 100
+
+    def test_replace_can_add_a_new_variant(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 40, "is_control": True},
+                    {
+                        "id": str(treatment.id),
+                        "name": "treatment_a",
+                        "percentage_allocation": 30,
+                        "is_control": False,
+                    },
+                    {"name": "treatment_b", "percentage_allocation": 30, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert Variant.objects.filter(flag=mv_flag).count() == 3
+        new_variant = Variant.objects.get(flag=mv_flag, name="treatment_b")
+        assert new_variant.percentage_allocation == 30
+        assert new_variant.is_control is False
+
+    def test_replace_rejects_removing_a_variant_forced_by_a_rule(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        rule = StrategyRule.objects.create(
+            flag=mv_flag, priority=0, rollout_variant=treatment, rollout_percentage=100
+        )
         grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
         grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
         client = api_client(user)
@@ -864,6 +921,9 @@ class TestFeatureFlagReplaceVariants:
         )
 
         assert response.status_code == 400
+        assert Variant.objects.filter(id=treatment.id).exists()
+        rule.refresh_from_db()
+        assert rule.rollout_variant_id == treatment.id
 
     def test_replace_rejects_an_id_from_another_flag(
         self, api_client, user, grant, tenant_a, mv_flag
