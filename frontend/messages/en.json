@@ -314,7 +314,6 @@
     "updateErrorFallback": "Failed to update flag",
     "updateSuccessToast": "Flag updated successfully",
     "variantControlLabel": "Control",
-    "variantControlBadge": "Control (default)",
     "variantNamePlaceholder": "e.g., control",
     "variantPercentageMismatchWarning": "Variant percentages must sum to 100 (currently {total})",
     "variantPercentagePlaceholder": "%",

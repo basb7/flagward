@@ -504,8 +504,8 @@ export default function FlagsPage() {
                             }
                           />
                           {row.is_control ? (
-                            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                              {t('variantControlBadge')}
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {t('variantControlLabel')}
                             </span>
                           ) : null}
                           <div className="flex flex-col gap-1">
