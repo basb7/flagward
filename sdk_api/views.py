@@ -73,7 +73,7 @@ def sdk_evaluate(request):
         EvaluationLog.objects.create(
             flag=flag,
             context_hash=context_hash,
-            result=bool(result),
+            result=str(result).lower() if isinstance(result, bool) else result,
         )
 
         results.append(

@@ -39,6 +39,5 @@ class EvaluationLogViewSet(
         "result": "result",
         "environment": "flag__environment",
     }
-    boolean_filter_fields = ("result",)
     environment_lookup = "flag__environment"
     capability_map = {}

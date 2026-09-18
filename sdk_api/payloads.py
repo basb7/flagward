@@ -42,6 +42,7 @@ def serialize_flag(flag: FeatureFlag, override: FlagOverride | None = None) -> d
             "name": flag.name,
             "is_enabled": override.is_enabled,
             "flag_type": flag.flag_type,
+            "variants": [],
             "rules": [],
             "overridden": True,
         }
@@ -52,6 +53,8 @@ def serialize_flag(flag: FeatureFlag, override: FlagOverride | None = None) -> d
             {
                 "priority": rule.priority,
                 "operator_logic": rule.operator_logic,
+                "rollout_variant": rule.rollout_variant.name if rule.rollout_variant else None,
+                "rollout_percentage": rule.rollout_percentage,
                 "conditions": [
                     {
                         "attribute": condition.attribute,
@@ -63,11 +66,17 @@ def serialize_flag(flag: FeatureFlag, override: FlagOverride | None = None) -> d
             }
         )
 
+    variants_data = [
+        {"name": variant.name, "percentage_allocation": variant.percentage_allocation}
+        for variant in flag.variants.all()
+    ]
+
     return {
         "key": flag.key,
         "name": flag.name,
         "is_enabled": flag.is_enabled,
         "flag_type": flag.flag_type,
+        "variants": variants_data,
         "rules": rules_data,
         "overridden": False,
     }
@@ -77,6 +86,6 @@ def serialize_environment_flags(environment) -> list[dict]:
     """Every flag in an environment, projected onto the SDK wire format."""
     overrides = active_overrides_by_flag(environment)
     flags = FeatureFlag.objects.filter(environment=environment).prefetch_related(
-        "rules", "rules__conditions"
+        "rules", "rules__conditions", "rules__rollout_variant", "variants"
     )
     return [serialize_flag(flag, overrides.get(flag.id)) for flag in flags]
