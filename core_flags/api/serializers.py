@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from core_flags.models import (
     Condition,
+    ConditionOperator,
     Environment,
     FeatureFlag,
     FlagOverride,
@@ -58,6 +59,26 @@ class ConditionSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):
             ),
         ),
     }
+
+    def validate(self, attrs):
+        operator = attrs.get(
+            "operator", self.instance.operator if self.instance else None
+        )
+        if operator != ConditionOperator.PERCENTAGE_SPLIT:
+            return attrs
+
+        raw = attrs.get("value", self.instance.value if self.instance else None)
+        percentage = raw.get("value") if isinstance(raw, dict) else raw
+        if (
+            isinstance(percentage, bool)
+            or not isinstance(percentage, (int, float))
+            or not 0 <= percentage <= 100
+        ):
+            raise serializers.ValidationError(
+                {"value": "A percentage split needs a number between 0 and 100."}
+            )
+        attrs["value"] = {"value": percentage}
+        return attrs
 
 
 class StrategyRuleSerializer(CapabilityScopedFKMixin, serializers.ModelSerializer):

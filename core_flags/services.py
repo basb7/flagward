@@ -126,21 +126,36 @@ class FlagEvaluationService:
             return True
 
         if rule.operator_logic == "AND":
-            return all(self._evaluate_condition(c, context) for c in conditions)
+            return all(
+                self._evaluate_condition(c, context, salt=rule.flag_id)
+                for c in conditions
+            )
         else:  # OR
-            return any(self._evaluate_condition(c, context) for c in conditions)
+            return any(
+                self._evaluate_condition(c, context, salt=rule.flag_id)
+                for c in conditions
+            )
 
-    def _evaluate_condition(self, condition: Condition, context: dict[str, Any]) -> bool:
+    def _evaluate_condition(
+        self, condition: Condition, context: dict[str, Any], salt=None
+    ) -> bool:
         """
         Evaluate a condition with the given context.
 
         Args:
             condition: The condition to evaluate
             context: Dictionary of attributes to evaluate against
+            salt: Stable per-flag salt for the PERCENTAGE_SPLIT hash
+                (the rule's `flag_id` — no extra query needed)
 
         Returns:
             Boolean result based on operator
         """
+        operator = condition.operator
+
+        if operator == ConditionOperator.PERCENTAGE_SPLIT:
+            return self._evaluate_percentage_split(condition, context, salt)
+
         attribute_value = context.get(condition.attribute)
 
         if attribute_value is None:
@@ -150,8 +165,6 @@ class FlagEvaluationService:
 
         if expected_value is None:
             return False
-
-        operator = condition.operator
 
         if operator == ConditionOperator.EQUALS:
             return attribute_value == expected_value
@@ -167,3 +180,27 @@ class FlagEvaluationService:
             return expected_value in attribute_value
         else:
             return False
+
+    def _evaluate_percentage_split(
+        self, condition: Condition, context: dict[str, Any], salt
+    ) -> bool:
+        """
+        Flagsmith-style `% Split`: the identity enters the segment only when
+        its deterministic bucket falls under the configured percentage.
+
+        Needs no trait — the bucket comes from `user_id` alone, so the
+        condition's `attribute` is ignored. Without a `user_id` (or a salt)
+        there is no bucket to compute, and the identity does not enter.
+        """
+        if salt is None:
+            return False
+        user_key = context.get("user_id")
+        if user_key is None:
+            return False
+        raw = condition.value
+        expected = raw.get("value") if isinstance(raw, dict) else raw
+        if isinstance(expected, bool) or not isinstance(expected, (int, float)):
+            return False
+        if not 0 <= expected <= 100:
+            return False
+        return self._hash_bucket(user_key, salt) < expected

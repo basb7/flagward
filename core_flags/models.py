@@ -27,6 +27,7 @@ class ConditionOperator(models.TextChoices):
     LESS_THAN = "LESS_THAN", "Less Than"
     IN_LIST = "IN_LIST", "In List"
     CONTAINS = "CONTAINS", "Contains"
+    PERCENTAGE_SPLIT = "PERCENTAGE_SPLIT", "Percentage Split"
 
 
 class Environment(models.Model):

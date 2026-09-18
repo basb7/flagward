@@ -574,3 +574,210 @@ class TestFlagEvaluationService:
 
         assert all(r in {"control", "treatment_a", "treatment_b"} for r in results)
         assert len(set(results)) > 1
+
+
+@pytest.mark.django_db
+class TestPercentageSplitCondition:
+    """Flagsmith-style `% Split`: the percentage gates segment entry."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
+        """Set up test data."""
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
+        self.service = FlagEvaluationService()
+
+    def _boolean_flag_with_split_rule(self, percentage, value_shape="wrapped"):
+        """Boolean flag whose only rule is `plan IN [pro] AND % split`."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="gradual-flag",
+            name="Gradual Flag",
+            is_enabled=True,
+        )
+        rule = StrategyRule.objects.create(
+            flag=flag,
+            priority=0,
+            operator_logic=OperatorLogic.AND,
+        )
+        Condition.objects.create(
+            rule=rule,
+            attribute="plan",
+            operator=ConditionOperator.IN_LIST,
+            value={"type": "list", "value": ["pro", "enterprise"]},
+        )
+        stored = {"value": percentage} if value_shape == "wrapped" else percentage
+        Condition.objects.create(
+            rule=rule,
+            attribute="user_id",
+            operator=ConditionOperator.PERCENTAGE_SPLIT,
+            value=stored,
+        )
+        return flag
+
+    def test_split_matches_exactly_the_bucket_under_percentage(self):
+        """A boolean gradual rollout is True exactly for buckets under the split."""
+        flag = self._boolean_flag_with_split_rule(60)
+        for i in range(20):
+            user_id = f"pro-user-{i}"
+            bucket = self.service._hash_bucket(user_id, flag.id)
+            result = self.service.evaluate_flag(
+                flag, {"user_id": user_id, "plan": "pro"}
+            )
+            assert result is (bucket < 60)
+
+    def test_split_excluded_users_never_see_the_change(self):
+        """Users outside the split fall through as if the rule never matched."""
+        flag = self._boolean_flag_with_split_rule(60)
+        outside = [
+            f"pro-user-{i}"
+            for i in range(50)
+            if not self.service._hash_bucket(f"pro-user-{i}", flag.id) < 60
+        ]
+        assert outside, "expected at least one user outside the split"
+        for user_id in outside:
+            assert (
+                self.service.evaluate_flag(flag, {"user_id": user_id, "plan": "pro"})
+                is False
+            )
+
+    def test_split_non_matching_segment_never_matches(self):
+        """A free-plan user never enters, regardless of their bucket."""
+        flag = self._boolean_flag_with_split_rule(100)
+        for i in range(10):
+            assert (
+                self.service.evaluate_flag(
+                    flag, {"user_id": f"free-user-{i}", "plan": "free"}
+                )
+                is False
+            )
+
+    def test_split_without_user_id_does_not_match(self):
+        """No user_id means no bucket, so the identity does not enter."""
+        flag = self._boolean_flag_with_split_rule(100)
+        assert self.service.evaluate_flag(flag, {"plan": "pro"}) is False
+
+    def test_split_accepts_raw_numeric_value_shape(self):
+        """Dashboard-style raw numbers behave like the wrapped dict shape."""
+        flag = self._boolean_flag_with_split_rule(100, value_shape="raw")
+        assert (
+            self.service.evaluate_flag(flag, {"user_id": "u-1", "plan": "pro"})
+            is True
+        )
+
+    def test_split_out_of_range_value_never_matches(self):
+        """A corrupt percentage is fail-closed, not fail-open."""
+        flag = self._boolean_flag_with_split_rule(150)
+        assert (
+            self.service.evaluate_flag(flag, {"user_id": "u-1", "plan": "pro"})
+            is False
+        )
+
+    def test_split_zero_matches_nobody_full_matches_segment(self):
+        """Boundary: 0 enters nobody, 100 enters everyone in the segment."""
+        zero = self._boolean_flag_with_split_rule(0)
+        assert (
+            self.service.evaluate_flag(zero, {"user_id": "u-1", "plan": "pro"})
+            is False
+        )
+
+    def test_multivariate_split_plus_forced_variant(self):
+        """% condition gates entry; a matched user gets the forced variant."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="multivariate-gradual",
+            name="Multivariate Gradual",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(
+            flag=flag, name="control", percentage_allocation=50, is_control=True
+        )
+        treatment = Variant.objects.create(
+            flag=flag, name="treatment_a", percentage_allocation=50
+        )
+        rule = StrategyRule.objects.create(
+            flag=flag,
+            priority=0,
+            operator_logic=OperatorLogic.AND,
+            rollout_variant=treatment,
+            rollout_percentage=100,
+        )
+        Condition.objects.create(
+            rule=rule,
+            attribute="plan",
+            operator=ConditionOperator.IN_LIST,
+            value={"type": "list", "value": ["pro", "enterprise"]},
+        )
+        Condition.objects.create(
+            rule=rule,
+            attribute="user_id",
+            operator=ConditionOperator.PERCENTAGE_SPLIT,
+            value={"value": 60},
+        )
+        inside = [
+            f"pro-user-{i}"
+            for i in range(50)
+            if self.service._hash_bucket(f"pro-user-{i}", flag.id) < 60
+        ]
+        assert inside, "expected at least one user inside the split"
+        for user_id in inside:
+            assert (
+                self.service.evaluate_flag(flag, {"user_id": user_id, "plan": "pro"})
+                == "treatment_a"
+            )
+
+
+@pytest.mark.django_db
+class TestPercentageSplitValidation:
+    """Serializer-level validation for the `% Split` condition value."""
+
+    def test_valid_percentage_is_wrapped(self):
+        """A raw number is normalized to the wrapped dict shape."""
+        from core_flags.api.serializers import ConditionSerializer
+
+        serializer = ConditionSerializer()
+        attrs = serializer.validate(
+            {
+                "operator": ConditionOperator.PERCENTAGE_SPLIT,
+                "value": 60,
+            }
+        )
+        assert attrs["value"] == {"value": 60}
+
+    def test_out_of_range_percentage_is_rejected(self):
+        """Percentages outside 0-100 are rejected."""
+        from rest_framework import serializers as drf_serializers
+
+        from core_flags.api.serializers import ConditionSerializer
+
+        serializer = ConditionSerializer()
+        with pytest.raises(drf_serializers.ValidationError):
+            serializer.validate(
+                {
+                    "operator": ConditionOperator.PERCENTAGE_SPLIT,
+                    "value": {"value": 150},
+                }
+            )
+
+    def test_non_numeric_percentage_is_rejected(self):
+        """Non-numeric percentages are rejected."""
+        from rest_framework import serializers as drf_serializers
+
+        from core_flags.api.serializers import ConditionSerializer
+
+        serializer = ConditionSerializer()
+        with pytest.raises(drf_serializers.ValidationError):
+            serializer.validate(
+                {
+                    "operator": ConditionOperator.PERCENTAGE_SPLIT,
+                    "value": {"value": "a lot"},
+                }
+            )
+
+    def test_other_operators_are_untouched(self):
+        """Validation only applies to PERCENTAGE_SPLIT."""
+        from core_flags.api.serializers import ConditionSerializer
+
+        serializer = ConditionSerializer()
+        attrs = {"operator": ConditionOperator.EQUALS, "value": "US"}
+        assert serializer.validate(attrs) == attrs
