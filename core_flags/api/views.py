@@ -2,8 +2,8 @@
 API views for core_flags.
 """
 from django.db import transaction
-from django.db.models import Prefetch
-from rest_framework import mixins, viewsets
+from django.db.models import Prefetch, ProtectedError
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -13,7 +13,9 @@ from core_flags.models import (
     Environment,
     FeatureFlag,
     FlagOverride,
+    FlagType,
     StrategyRule,
+    Variant,
 )
 from tenancy.capabilities import Capability
 from tenancy.permissions import HasCapability, IsDashboardUser, TenantScopedViewSetMixin
@@ -24,6 +26,8 @@ from .serializers import (
     FeatureFlagSerializer,
     FlagOverrideSerializer,
     StrategyRuleSerializer,
+    VariantSerializer,
+    validate_variant_set,
 )
 
 
@@ -74,6 +78,7 @@ class FeatureFlagViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewse
     queryset = FeatureFlag.objects.select_related("environment").prefetch_related(
         "rules",
         "rules__conditions",
+        "variants",
         Prefetch(
             "overrides",
             queryset=FlagOverride.objects.active().order_by("-created_at"),
@@ -95,7 +100,110 @@ class FeatureFlagViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewse
         "update": Capability.FLAG_EDIT,
         "partial_update": Capability.FLAG_EDIT,
         "destroy": Capability.FLAG_EDIT,
+        "variants": Capability.FLAG_EDIT,
     }
+
+    @action(detail=True, methods=["post", "put"])
+    def variants(self, request, pk=None):
+        """
+        Create or replace a MULTIVARIATE flag's entire variant set atomically.
+
+        `VariantSerializer.validate` checks each row against the flag's
+        *existing* rows, so it cannot express "this set of N rows sums to
+        100" -- editing two rows independently means each save only sees one
+        side of the change. POST creates the initial set (only when the flag
+        has zero variants); PUT replaces an existing set in place, matched by
+        id, so a rename, a percentage rebalance across rows, and a new
+        control all land in one all-or-nothing request instead of racing
+        each other through the per-row `/api/v1/variants/` endpoint.
+        """
+        flag = self.get_object()
+
+        if flag.flag_type != FlagType.MULTIVARIATE:
+            return Response(
+                {"flag": "Variants only apply to MULTIVARIATE flags."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        variants_data = request.data.get("variants")
+        if not isinstance(variants_data, list):
+            return Response(
+                {"variants": "This field is required and must be a list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if request.method == "POST":
+            return self._create_variant_set(flag, variants_data)
+        return self._replace_variant_set(flag, variants_data)
+
+    def _create_variant_set(self, flag, variants_data):
+        if flag.variants.exists():
+            return Response(
+                {"variants": "This flag already has variants. Use PUT to replace the set."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            variants_data = validate_variant_set(list(variants_data))
+        except serializers.ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            created = [
+                Variant.objects.create(
+                    flag=flag,
+                    name=item["name"],
+                    percentage_allocation=item["percentage_allocation"],
+                    is_control=bool(item.get("is_control", False)),
+                )
+                for item in variants_data
+            ]
+
+        return Response(
+            VariantSerializer(created, many=True).data, status=status.HTTP_201_CREATED
+        )
+
+    def _replace_variant_set(self, flag, variants_data):
+        existing_ids = set(flag.variants.values_list("id", flat=True))
+        submitted_ids = set()
+        for item in variants_data:
+            if not isinstance(item, dict) or "id" not in item:
+                return Response(
+                    {"variants": "Each variant must include the id of an existing variant on this flag."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            submitted_ids.add(str(item["id"]))
+
+        if submitted_ids != {str(pk) for pk in existing_ids}:
+            return Response(
+                {
+                    "variants": (
+                        "The submitted set must include every existing variant on this "
+                        "flag, with no additions or removals."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            validated = validate_variant_set(
+                [{k: v for k, v in item.items() if k != "id"} for item in variants_data]
+            )
+        except serializers.ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        by_id = {str(item["id"]): validated[i] for i, item in enumerate(variants_data)}
+        with transaction.atomic():
+            updated = []
+            for variant in flag.variants.select_for_update():
+                data = by_id[str(variant.id)]
+                variant.name = data["name"]
+                variant.percentage_allocation = data["percentage_allocation"]
+                variant.is_control = bool(data.get("is_control", False))
+                variant.save(update_fields=["name", "percentage_allocation", "is_control"])
+                updated.append(variant)
+
+        return Response(VariantSerializer(updated, many=True).data, status=status.HTTP_200_OK)
 
 
 class StrategyRuleViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ModelViewSet):
@@ -111,6 +219,32 @@ class StrategyRuleViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, views
         "partial_update": Capability.FLAG_EDIT,
         "destroy": Capability.FLAG_EDIT,
     }
+
+
+class VariantViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ModelViewSet):
+    """ViewSet for Variant model."""
+    queryset = Variant.objects.all()
+    serializer_class = VariantSerializer
+    filter_fields = ("flag",)
+    permission_classes = [IsDashboardUser, HasCapability]
+    environment_lookup = "flag__environment"
+    capability_map = {
+        "create": Capability.FLAG_EDIT,
+        "update": Capability.FLAG_EDIT,
+        "partial_update": Capability.FLAG_EDIT,
+        "destroy": Capability.FLAG_EDIT,
+    }
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except ProtectedError:
+            return Response(
+                {"detail": "This variant is forced by a strategy rule and cannot be deleted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ConditionViewSet(TenantScopedViewSetMixin, QueryParamFilterMixin, viewsets.ModelViewSet):
