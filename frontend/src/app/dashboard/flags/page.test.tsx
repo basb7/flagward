@@ -94,10 +94,14 @@ describe('FlagsPage create dialog', () => {
 
     expect(screen.getByText('Variants')).toBeInTheDocument();
     expect(screen.getAllByPlaceholderText('e.g., control')).toHaveLength(2);
+    // The control row is read-only text; only the treatment row has an input.
     const percentageInputs = screen.getAllByPlaceholderText('%');
-    expect(percentageInputs[0]).toHaveValue(100);
-    expect(percentageInputs[0]).toBeDisabled();
-    expect(percentageInputs[1]).toHaveValue(0);
+    expect(percentageInputs).toHaveLength(1);
+    expect(percentageInputs[0]).toHaveValue(0);
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: 'Control' }),
+    ).not.toBeInTheDocument();
   });
 
   it('recalculates the control percentage automatically as another variant changes', async () => {
@@ -108,9 +112,9 @@ describe('FlagsPage create dialog', () => {
     });
 
     const percentageInputs = screen.getAllByPlaceholderText('%');
-    fireEvent.change(percentageInputs[1], { target: { value: '30' } });
+    fireEvent.change(percentageInputs[0], { target: { value: '30' } });
 
-    expect(percentageInputs[0]).toHaveValue(70);
+    expect(screen.getByText('70%')).toBeInTheDocument();
     expect(screen.queryByText(/must sum to 100/i)).not.toBeInTheDocument();
   });
 
@@ -124,30 +128,27 @@ describe('FlagsPage create dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add variant/i }));
 
     const percentageInputs = screen.getAllByPlaceholderText('%');
-    fireEvent.change(percentageInputs[1], { target: { value: '90' } });
-    expect(percentageInputs[0]).toHaveValue(10);
+    fireEvent.change(percentageInputs[0], { target: { value: '90' } });
+    expect(screen.getByText('10%')).toBeInTheDocument();
 
-    fireEvent.change(percentageInputs[2], { target: { value: '50' } });
+    fireEvent.change(percentageInputs[1], { target: { value: '50' } });
 
-    expect(percentageInputs[2]).toHaveValue(10);
-    expect(percentageInputs[0]).toHaveValue(0);
+    expect(percentageInputs[1]).toHaveValue(10);
+    expect(screen.getByText('0%')).toBeInTheDocument();
   });
 
-  it('keeps exactly one control variant switch on at a time', async () => {
+  it('shows the control percentage as read-only text with no switch', async () => {
     await openCreateDialog();
 
     fireEvent.change(await screen.findByLabelText('Type'), {
       target: { value: 'MULTIVARIATE' },
     });
 
-    const controlSwitches = screen.getAllByRole('switch', { name: 'Control' });
-    expect(controlSwitches[0]).toHaveAttribute('aria-checked', 'true');
-    expect(controlSwitches[1]).toHaveAttribute('aria-checked', 'false');
-
-    fireEvent.click(controlSwitches[1]);
-
-    expect(controlSwitches[0]).toHaveAttribute('aria-checked', 'false');
-    expect(controlSwitches[1]).toHaveAttribute('aria-checked', 'true');
+    // Control is always the default: no switch, derived percentage as text.
+    expect(
+      screen.queryByRole('switch', { name: 'Control' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('100%')).toBeInTheDocument();
   });
 
   it('creates a variant for each row after the flag is created', async () => {
@@ -171,7 +172,7 @@ describe('FlagsPage create dialog', () => {
     const percentageInputs = screen.getAllByPlaceholderText('%');
     fireEvent.change(nameInputs[0], { target: { value: 'control' } });
     fireEvent.change(nameInputs[1], { target: { value: 'treatment_a' } });
-    fireEvent.change(percentageInputs[1], { target: { value: '50' } });
+    fireEvent.change(percentageInputs[0], { target: { value: '50' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 

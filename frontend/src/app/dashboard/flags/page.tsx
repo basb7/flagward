@@ -148,11 +148,6 @@ export default function FlagsPage() {
     ]);
   };
 
-  const variantPercentageTotal = variantRows.reduce(
-    (sum, row) => sum + (Number(row.percentage_allocation) || 0),
-    0,
-  );
-
   const addVariantRow = () => {
     setVariantRows((rows) =>
       recalcControlPercentage([...rows, makeVariantRow()]),
@@ -196,7 +191,6 @@ export default function FlagsPage() {
           : patch;
       const next = rows.map((row, i) => {
         if (i === index) return { ...row, ...nextPatch };
-        if (patch.is_control) return { ...row, is_control: false };
         return row;
       });
       return recalcControlPercentage(next);
@@ -224,8 +218,7 @@ export default function FlagsPage() {
 
   const isMultivariateFormValid =
     newFlag.flag_type !== 'MULTIVARIATE' ||
-    (variantPercentageTotal === 100 &&
-      variantRows.every((row) => row.name.trim() !== ''));
+    variantRows.every((row) => row.name.trim() !== '');
 
   const handleCreate = async () => {
     // Variants belong to the flag, but they're a separate API call after
@@ -233,11 +226,7 @@ export default function FlagsPage() {
     // invalid variant split never creates an orphaned flag that then blocks
     // retrying with the same key.
     if (!isMultivariateFormValid) {
-      showError(
-        t('variantPercentageMismatchWarning', {
-          total: variantPercentageTotal,
-        }),
-      );
+      showError(t('createErrorFallback'));
       return;
     }
 
@@ -516,44 +505,25 @@ export default function FlagsPage() {
                                 })
                               }
                             />
-                            <Input
-                              type="number"
-                              placeholder={t('variantPercentagePlaceholder')}
-                              value={row.percentage_allocation}
-                              onChange={(e) =>
-                                updateVariantRow(index, {
-                                  percentage_allocation: e.target.value,
-                                })
-                              }
-                              min={0}
-                              max={
-                                row.is_control
-                                  ? 100
-                                  : getNonControlHeadroom(variantRows, index)
-                              }
-                              disabled={row.is_control}
-                              className="w-24"
-                            />
-                            <div className="flex items-center gap-1.5 whitespace-nowrap">
-                              <Switch
-                                checked={row.is_control}
-                                onCheckedChange={(checked) => {
-                                  // Exactly one control per flag: turning one
-                                  // on turns every other row off, and turning
-                                  // the active one off is a no-op -- there is
-                                  // always exactly one, never zero.
-                                  if (checked) {
-                                    updateVariantRow(index, {
-                                      is_control: true,
-                                    });
-                                  }
-                                }}
-                                aria-label={t('variantControlLabel')}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {t('variantControlLabel')}
+                            {row.is_control ? (
+                              <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
+                                {row.percentage_allocation}%
                               </span>
-                            </div>
+                            ) : (
+                              <Input
+                                type="number"
+                                placeholder={t('variantPercentagePlaceholder')}
+                                value={row.percentage_allocation}
+                                onChange={(e) =>
+                                  updateVariantRow(index, {
+                                    percentage_allocation: e.target.value,
+                                  })
+                                }
+                                min={0}
+                                max={getNonControlHeadroom(variantRows, index)}
+                                className="w-24"
+                              />
+                            )}
                             <Tooltip>
                               <TooltipTrigger
                                 render={
@@ -610,13 +580,6 @@ export default function FlagsPage() {
                     >
                       {t('addVariantButton')}
                     </Button>
-                    {variantPercentageTotal !== 100 ? (
-                      <p className="text-xs text-destructive">
-                        {t('variantPercentageMismatchWarning', {
-                          total: variantPercentageTotal,
-                        })}
-                      </p>
-                    ) : null}
                   </div>
                 ) : null}
               </div>

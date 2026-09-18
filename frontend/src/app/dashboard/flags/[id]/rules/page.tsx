@@ -29,7 +29,6 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
-import { Switch } from '@/components/ui/switch';
 import {
   Table,
   TableBody,
@@ -106,13 +105,9 @@ export default function RulesPage() {
   const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([]);
   const [isSavingVariants, setIsSavingVariants] = useState(false);
 
-  const variantDraftTotal = variantDrafts.reduce(
-    (sum, row) => sum + (Number(row.percentage_allocation) || 0),
-    0,
+  const isVariantEditValid = variantDrafts.every(
+    (row) => row.name.trim() !== '',
   );
-  const isVariantEditValid =
-    variantDraftTotal === 100 &&
-    variantDrafts.every((row) => row.name.trim() !== '');
 
   // The control variant is never edited directly: its percentage is always
   // `100 - sum(other variants)`, mirroring Flagsmith's variant editor.
@@ -182,7 +177,6 @@ export default function RulesPage() {
           : patch;
       const next = rows.map((row, i) => {
         if (i === index) return { ...row, ...nextPatch };
-        if (patch.is_control) return { ...row, is_control: false };
         return row;
       });
       return recalcControlPercentage(next);
@@ -639,37 +633,24 @@ export default function RulesPage() {
                           updateVariantDraft(index, { name: e.target.value })
                         }
                       />
-                      <Input
-                        type="number"
-                        value={row.percentage_allocation}
-                        onChange={(e) =>
-                          updateVariantDraft(index, {
-                            percentage_allocation: e.target.value,
-                          })
-                        }
-                        min={0}
-                        max={
-                          row.is_control
-                            ? 100
-                            : getNonControlHeadroom(variantDrafts, index)
-                        }
-                        disabled={row.is_control}
-                        className="w-24"
-                      />
-                      <div className="flex items-center gap-1.5 whitespace-nowrap">
-                        <Switch
-                          checked={row.is_control}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              updateVariantDraft(index, { is_control: true });
-                            }
-                          }}
-                          aria-label={t('variantControlLabel')}
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          {t('variantControlLabel')}
+                      {row.is_control ? (
+                        <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
+                          {row.percentage_allocation}%
                         </span>
-                      </div>
+                      ) : (
+                        <Input
+                          type="number"
+                          value={row.percentage_allocation}
+                          onChange={(e) =>
+                            updateVariantDraft(index, {
+                              percentage_allocation: e.target.value,
+                            })
+                          }
+                          min={0}
+                          max={getNonControlHeadroom(variantDrafts, index)}
+                          className="w-24"
+                        />
+                      )}
                     </div>
                     {row.is_control ? null : (
                       <Slider
@@ -687,13 +668,6 @@ export default function RulesPage() {
                     )}
                   </div>
                 ))}
-                {variantDraftTotal !== 100 ? (
-                  <p className="text-xs text-destructive">
-                    {t('variantPercentageMismatchWarning', {
-                      total: variantDraftTotal,
-                    })}
-                  </p>
-                ) : null}
                 <div className="flex justify-end gap-2">
                   <Button
                     variant="outline"

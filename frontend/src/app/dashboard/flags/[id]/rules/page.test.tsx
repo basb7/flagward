@@ -265,8 +265,8 @@ describe('RulesPage variant editing', () => {
 
     expect(screen.getByDisplayValue('control')).toBeInTheDocument();
     expect(screen.getByDisplayValue('treatment')).toBeInTheDocument();
-    // The sliders mirror the same values, so scope to the manual inputs.
-    expect(numberInputWithValue('60')).toBeInTheDocument();
+    // The control percentage is derived, shown as read-only text.
+    expect(screen.getByText('60%')).toBeInTheDocument();
     expect(numberInputWithValue('40')).toBeInTheDocument();
 
     vi.doUnmock('@/lib/api');
@@ -327,8 +327,7 @@ describe('RulesPage variant editing', () => {
       target: { value: '30' },
     });
 
-    expect(numberInputWithValue('70')).toBeInTheDocument();
-    expect(numberInputWithValue('70')).toBeDisabled();
+    expect(screen.getByText('70%')).toBeInTheDocument();
     expect(screen.queryByText(/must sum to 100/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
 
