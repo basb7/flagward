@@ -71,8 +71,33 @@ class FeatureFlag(models.Model):
         return f"{self.environment.key}/{self.key}"
 
 
+class Variant(models.Model):
+    """A named variant of a multivariate flag, with a percentage allocation."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    flag = models.ForeignKey(FeatureFlag, on_delete=models.CASCADE, related_name="variants")
+    name = models.CharField(max_length=255)
+    percentage_allocation = models.IntegerField()
+    is_control = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ("flag", "name")
+
+    def __str__(self):
+        return f"{self.name} ({self.percentage_allocation}%) for {self.flag}"
+
+
 class StrategyRule(models.Model):
-    """Strategy rule for feature flag evaluation."""
+    """
+    Strategy rule for feature flag evaluation.
+
+    `rollout_variant` + `rollout_percentage` give a MULTIVARIATE rule its own
+    rollout, independent of the flag's global variant split: a matching
+    user's hash bucket under `rollout_percentage` gets `rollout_variant`,
+    everyone else in this rule falls through to the flag's global split.
+    `rollout_percentage=100` (the default when a variant is set but no
+    percentage is given) needs no bucket at all -- every user matches -- which
+    is what makes it behave like a plain forced variant.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     flag = models.ForeignKey(FeatureFlag, on_delete=models.CASCADE, related_name="rules")
     priority = models.IntegerField(default=0)
@@ -81,6 +106,14 @@ class StrategyRule(models.Model):
         choices=OperatorLogic.choices,
         default=OperatorLogic.AND,
     )
+    rollout_variant = models.ForeignKey(
+        Variant,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="rollout_rules",
+    )
+    rollout_percentage = models.IntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["priority"]

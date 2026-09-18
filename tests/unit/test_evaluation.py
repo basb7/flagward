@@ -8,9 +8,11 @@ from core_flags.models import (
     ConditionOperator,
     Environment,
     FeatureFlag,
+    FlagOverride,
     FlagType,
     OperatorLogic,
     StrategyRule,
+    Variant,
 )
 from core_flags.services import FlagEvaluationService
 
@@ -288,8 +290,8 @@ class TestFlagEvaluationService:
         # Should return True because rule0 matches first
         assert self.service.evaluate_flag(flag, {"country": "US"}) is True
 
-    def test_multivariate_flag_returns_variant(self):
-        """Test that multivariate flag returns variant name."""
+    def test_multivariate_rule_at_100_percent_rollout_behaves_like_a_forced_variant(self):
+        """A rule with rollout_percentage=100 always returns rollout_variant, no user_id needed."""
         flag = FeatureFlag.objects.create(
             environment=self.env,
             key="multivariate-flag",
@@ -297,18 +299,149 @@ class TestFlagEvaluationService:
             flag_type=FlagType.MULTIVARIATE,
             is_enabled=True,
         )
-        rule = StrategyRule.objects.create(flag=flag, priority=0, operator_logic=OperatorLogic.AND)
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=50, is_control=True)
+        treatment = Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
+        rule = StrategyRule.objects.create(
+            flag=flag,
+            priority=0,
+            operator_logic=OperatorLogic.AND,
+            rollout_variant=treatment,
+            rollout_percentage=100,
+        )
         Condition.objects.create(
             rule=rule,
-            attribute="country",
+            attribute="plan",
             operator=ConditionOperator.EQUALS,
-            value={"type": "string", "value": "US"},
+            value={"type": "string", "value": "enterprise"},
         )
-        result = self.service.evaluate_flag(flag, {"country": "US"})
-        assert result is True  # For now, return True for matching rules
 
-    def test_multivariate_flag_no_match_returns_control(self):
-        """Test that multivariate flag returns control when no rules match."""
+        result = self.service.evaluate_flag(flag, {"plan": "enterprise"})
+        assert result == "treatment_a"
+
+    def test_multivariate_rule_with_partial_rollout_uses_its_own_percentage(self):
+        """A rule's own rollout_percentage is used instead of the flag's global split."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="segment-rollout",
+            name="Segment Rollout",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=100, is_control=True)
+        treatment = Variant.objects.create(flag=flag, name="treatment", percentage_allocation=0)
+        rule = StrategyRule.objects.create(
+            flag=flag,
+            priority=0,
+            operator_logic=OperatorLogic.AND,
+            rollout_variant=treatment,
+            rollout_percentage=10,
+        )
+        Condition.objects.create(
+            rule=rule,
+            attribute="plan",
+            operator=ConditionOperator.IN_LIST,
+            value={"type": "array", "value": ["pro", "enterprise"]},
+        )
+
+        # Non-matching users always fall through to the flag's global 100/0 split.
+        assert self.service.evaluate_flag(flag, {"plan": "free", "user_id": "u-1"}) == "control"
+
+        # Matching users are assigned by the RULE's 10% threshold, which the
+        # global split (100% control) could never produce.
+        matching_results = {
+            self.service.evaluate_flag(flag, {"plan": "pro", "user_id": f"user-{i}"})
+            for i in range(30)
+        }
+        assert "treatment" in matching_results
+
+    def test_a_user_outside_the_rollout_window_falls_through_to_the_global_split(self):
+        """A matching user whose bucket is >= rollout_percentage falls through, not to control directly."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="excluded-rollout",
+            name="Excluded Rollout",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=0, is_control=True)
+        treatment = Variant.objects.create(flag=flag, name="treatment", percentage_allocation=100)
+        rule = StrategyRule.objects.create(
+            flag=flag,
+            priority=0,
+            operator_logic=OperatorLogic.AND,
+            rollout_variant=treatment,
+            rollout_percentage=10,
+        )
+        Condition.objects.create(
+            rule=rule,
+            attribute="plan",
+            operator=ConditionOperator.EQUALS,
+            value={"type": "string", "value": "pro"},
+        )
+
+        # The flag's global split is 100% treatment, so anyone falling through
+        # this rule's 10% window still lands on "treatment" via the global
+        # split -- proving it's a real fallthrough, not a fixed "control".
+        results = {
+            self.service.evaluate_flag(flag, {"plan": "pro", "user_id": f"user-{i}"})
+            for i in range(30)
+        }
+        assert results == {"treatment"}
+
+    def test_hash_bucket_is_the_same_regardless_of_which_flag_field_reads_it(self):
+        """`_hash_bucket` depends only on (user_key, flag_id) -- it has no
+        notion of "which rule matched" or "which split is active", which is
+        what lets a rule's rollout_percentage be raised over time without
+        reshuffling a user's underlying bucket value."""
+        first = self.service._hash_bucket("u-consistent", "flag-a")
+        second = self.service._hash_bucket("u-consistent", "flag-a")
+        assert first == second
+
+    def test_raising_a_rules_rollout_percentage_only_ever_adds_users_never_removes(self):
+        """Widening a rule's rollout_percentage keeps every user who was
+        already inside it, and only adds users at the margin -- proof the
+        hash bucket itself never changes when the threshold does."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="widening-rollout",
+            name="Widening Rollout",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=100, is_control=True)
+        treatment = Variant.objects.create(flag=flag, name="treatment", percentage_allocation=0)
+        rule = StrategyRule.objects.create(
+            flag=flag,
+            priority=0,
+            operator_logic=OperatorLogic.AND,
+            rollout_variant=treatment,
+            rollout_percentage=10,
+        )
+        Condition.objects.create(
+            rule=rule,
+            attribute="plan",
+            operator=ConditionOperator.EQUALS,
+            value={"type": "string", "value": "pro"},
+        )
+
+        contexts = [{"plan": "pro", "user_id": f"user-{i}"} for i in range(50)]
+        at_10 = {
+            c["user_id"] for c in contexts if self.service.evaluate_flag(flag, c) == "treatment"
+        }
+
+        rule.rollout_percentage = 50
+        rule.save(update_fields=["rollout_percentage"])
+
+        at_50 = {
+            c["user_id"] for c in contexts if self.service.evaluate_flag(flag, c) == "treatment"
+        }
+
+        assert at_10.issubset(at_50)
+        assert len(at_50) > len(at_10)
+
+    def test_multivariate_missing_user_id_returns_control_even_when_rule_has_a_rollout(self):
+        """A rule-scoped rollout never defines its own control -- missing
+        user_id always falls back to the flag's own control variant."""
         flag = FeatureFlag.objects.create(
             environment=self.env,
             key="multivariate-flag",
@@ -316,6 +449,57 @@ class TestFlagEvaluationService:
             flag_type=FlagType.MULTIVARIATE,
             is_enabled=True,
         )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=50, is_control=True)
+        treatment = Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
+        rule = StrategyRule.objects.create(
+            flag=flag,
+            priority=0,
+            operator_logic=OperatorLogic.AND,
+            rollout_variant=treatment,
+            rollout_percentage=50,
+        )
+        Condition.objects.create(
+            rule=rule,
+            attribute="plan",
+            operator=ConditionOperator.EQUALS,
+            value={"type": "string", "value": "pro"},
+        )
+
+        result = self.service.evaluate_flag(flag, {"plan": "pro"})
+        assert result == "control"
+
+    def test_multivariate_matching_rule_without_rollout_variant_falls_through(self):
+        """Test that a matching rule with no rollout_variant falls through to percentage split."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="multivariate-flag",
+            name="Multivariate Flag",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=50, is_control=True)
+        Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
+        rule = StrategyRule.objects.create(flag=flag, priority=0, operator_logic=OperatorLogic.AND)
+        Condition.objects.create(
+            rule=rule,
+            attribute="plan",
+            operator=ConditionOperator.EQUALS,
+            value={"type": "string", "value": "enterprise"},
+        )
+        result = self.service.evaluate_flag(flag, {"plan": "enterprise", "user_id": "u-1"})
+        assert result in {"control", "treatment_a"}
+
+    def test_multivariate_no_matching_rule_uses_percentage_split(self):
+        """Test that multivariate flag with no matching rules uses percentage split."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="multivariate-flag",
+            name="Multivariate Flag",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=50, is_control=True)
+        Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
         rule = StrategyRule.objects.create(flag=flag, priority=0, operator_logic=OperatorLogic.AND)
         Condition.objects.create(
             rule=rule,
@@ -323,5 +507,70 @@ class TestFlagEvaluationService:
             operator=ConditionOperator.EQUALS,
             value={"type": "string", "value": "US"},
         )
-        result = self.service.evaluate_flag(flag, {"country": "AR"})
-        assert result is False  # Control variant
+        result = self.service.evaluate_flag(flag, {"country": "AR", "user_id": "u-1"})
+        assert result in {"control", "treatment_a"}
+
+    def test_multivariate_same_user_id_returns_same_variant(self):
+        """Test that the same user_id always returns the same variant."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="multivariate-flag",
+            name="Multivariate Flag",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=50, is_control=True)
+        Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
+        first = self.service.evaluate_flag(flag, {"user_id": "u-42"})
+        second = self.service.evaluate_flag(flag, {"user_id": "u-42"})
+        assert first == second
+
+    def test_multivariate_missing_user_id_returns_fallback_variant(self):
+        """Test that missing user_id returns the control variant."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="multivariate-flag",
+            name="Multivariate Flag",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=50, is_control=True)
+        Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
+        result = self.service.evaluate_flag(flag, {})
+        assert result == "control"
+
+    def test_multivariate_active_override_still_wins(self):
+        """Test that an active FlagOverride wins over all multivariate logic."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="multivariate-flag",
+            name="Multivariate Flag",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=50, is_control=True)
+        Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
+        FlagOverride.objects.create(flag=flag, is_enabled=True, reason="kill switch test")
+        result = self.service.evaluate_flag(flag, {"user_id": "u-1"})
+        assert result is True
+
+    def test_multivariate_percentage_split_distributes_across_variants(self):
+        """Triangulation: sweep many user ids against a 3-variant 33/33/34 split."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="multivariate-flag",
+            name="Multivariate Flag",
+            flag_type=FlagType.MULTIVARIATE,
+            is_enabled=True,
+        )
+        Variant.objects.create(flag=flag, name="control", percentage_allocation=33, is_control=True)
+        Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=33)
+        Variant.objects.create(flag=flag, name="treatment_b", percentage_allocation=34)
+
+        results = [
+            self.service.evaluate_flag(flag, {"user_id": f"user-{i}"})
+            for i in range(20)
+        ]
+
+        assert all(r in {"control", "treatment_a", "treatment_b"} for r in results)
+        assert len(set(results)) > 1

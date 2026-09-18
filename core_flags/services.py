@@ -1,6 +1,7 @@
 """
 Services for core_flags evaluation engine.
 """
+import hashlib
 from typing import Any
 
 from core_flags.models import (
@@ -8,6 +9,7 @@ from core_flags.models import (
     ConditionOperator,
     FeatureFlag,
     FlagOverride,
+    FlagType,
     StrategyRule,
 )
 
@@ -38,6 +40,9 @@ class FlagEvaluationService:
 
         rules = flag.rules.all().order_by("priority")
 
+        if flag.flag_type == FlagType.MULTIVARIATE:
+            return self._evaluate_multivariate(flag, rules, context)
+
         if not rules.exists():
             return True
 
@@ -47,6 +52,62 @@ class FlagEvaluationService:
                 return True
 
         return False
+
+    def _evaluate_multivariate(
+        self, flag: FeatureFlag, rules, context: dict[str, Any]
+    ) -> str:
+        """
+        Evaluate a MULTIVARIATE flag: a matching rule with its own rollout wins
+        for the share of users under `rollout_percentage`; everyone else --
+        excluded from that rollout, matched a rule with no rollout of its own,
+        or matched no rule at all -- falls through to the flag's global
+        percentage split.
+        """
+        for rule in rules:
+            if not self._evaluate_rule(rule, context):
+                continue
+
+            if rule.rollout_variant is None:
+                break
+
+            if rule.rollout_percentage is not None and rule.rollout_percentage >= 100:
+                # Every bucket value satisfies "< 100", so no hash -- and no
+                # user_id -- is needed to resolve this rule.
+                return rule.rollout_variant.name
+
+            user_key = context.get("user_id")
+            if user_key is None:
+                return flag.variants.get(is_control=True).name
+
+            if self._hash_bucket(user_key, flag.id) < rule.rollout_percentage:
+                return rule.rollout_variant.name
+
+            break
+
+        return self._assign_by_percentage(flag, context)
+
+    def _hash_bucket(self, user_key: str, flag_id) -> float:
+        """Hash a user key + flag id into a deterministic float in [0, 100)."""
+        digest = hashlib.md5(f"{user_key}:{flag_id}".encode()).hexdigest()
+        return int(digest[:8], 16) % 10000 / 100.0
+
+    def _assign_by_percentage(self, flag: FeatureFlag, context: dict[str, Any]) -> str:
+        """Assign a variant deterministically by the flag's global percentage allocation."""
+        user_key = context.get("user_id")
+        variants = flag.variants.order_by("id")
+
+        if user_key is None:
+            return flag.variants.get(is_control=True).name
+
+        bucket_value = self._hash_bucket(user_key, flag.id)
+
+        cumulative = 0.0
+        for variant in variants:
+            cumulative += variant.percentage_allocation
+            if bucket_value < cumulative:
+                return variant.name
+
+        return variants.last().name
 
     def _evaluate_rule(self, rule: StrategyRule, context: dict[str, Any]) -> bool:
         """
