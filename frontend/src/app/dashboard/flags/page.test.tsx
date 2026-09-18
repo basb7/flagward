@@ -54,6 +54,56 @@ describe('FlagsPage loading state', () => {
   });
 });
 
+describe('FlagsPage list', () => {
+  beforeEach(() => {
+    listEnvironments.mockReset().mockResolvedValue({
+      results: [{ id: 'env-1', name: 'Prod', key: 'prod', api_key: 'k' }],
+      count: 1,
+    });
+  });
+
+  it('shows the flag type as a translated badge, not the raw enum value', async () => {
+    listFlags.mockReset().mockResolvedValue({
+      results: [
+        {
+          id: 'flag-1',
+          environment: 'env-1',
+          key: 'my-bool-flag',
+          name: 'My Bool Flag',
+          description: '',
+          is_enabled: true,
+          effective_is_enabled: true,
+          active_override: null,
+          flag_type: 'BOOLEAN',
+          rules: [],
+          variants: [],
+        },
+        {
+          id: 'flag-2',
+          environment: 'env-1',
+          key: 'my-mv-flag',
+          name: 'My MV Flag',
+          description: '',
+          is_enabled: true,
+          effective_is_enabled: true,
+          active_override: null,
+          flag_type: 'MULTIVARIATE',
+          rules: [],
+          variants: [],
+        },
+      ],
+      count: 2,
+    });
+
+    renderWithIntl(<FlagsPage />);
+
+    expect(await screen.findByText('Boolean')).toBeInTheDocument();
+    expect(screen.getByText('Multivariate')).toBeInTheDocument();
+    expect(screen.queryByText('BOOLEAN')).not.toBeInTheDocument();
+    expect(screen.queryByText('MULTIVARIATE')).not.toBeInTheDocument();
+  });
+});
+
 describe('FlagsPage create dialog', () => {
   beforeEach(() => {
     listFlags.mockReset().mockResolvedValue({ results: [], count: 0 });

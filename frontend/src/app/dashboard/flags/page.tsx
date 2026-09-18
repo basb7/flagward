@@ -697,8 +697,16 @@ export default function FlagsPage() {
                   <TableCell className="text-muted-foreground">
                     {getEnvName(flag.environment)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {flag.flag_type}
+                  <TableCell>
+                    <Badge
+                      variant={
+                        flag.flag_type === 'MULTIVARIATE' ? 'info' : 'muted'
+                      }
+                    >
+                      {flag.flag_type === 'MULTIVARIATE'
+                        ? t('flagTypeMultivariateBadge')
+                        : t('flagTypeBooleanBadge')}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
