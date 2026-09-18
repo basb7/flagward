@@ -267,6 +267,7 @@ describe('RulesPage variant editing', () => {
     expect(screen.getByDisplayValue('treatment')).toBeInTheDocument();
     // The control percentage is derived, shown as read-only text.
     expect(screen.getByText('60%')).toBeInTheDocument();
+    expect(screen.getByText('Control (default)')).toBeInTheDocument();
     expect(numberInputWithValue('40')).toBeInTheDocument();
 
     vi.doUnmock('@/lib/api');

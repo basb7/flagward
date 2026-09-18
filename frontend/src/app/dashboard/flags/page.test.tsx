@@ -99,6 +99,7 @@ describe('FlagsPage create dialog', () => {
     expect(percentageInputs).toHaveLength(1);
     expect(percentageInputs[0]).toHaveValue(0);
     expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(screen.getByText('Control (default)')).toBeInTheDocument();
     expect(
       screen.queryByRole('switch', { name: 'Control' }),
     ).not.toBeInTheDocument();

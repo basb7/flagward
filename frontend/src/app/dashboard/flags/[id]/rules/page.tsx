@@ -637,6 +637,11 @@ export default function RulesPage() {
                         updateVariantDraft(index, { name: e.target.value })
                       }
                     />
+                    {row.is_control ? (
+                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                        {t('variantControlBadge')}
+                      </span>
+                    ) : null}
                     <div className="flex flex-col gap-1">
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         {t('variantWeightLabel')}
