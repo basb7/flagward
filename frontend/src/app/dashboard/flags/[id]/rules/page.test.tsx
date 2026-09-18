@@ -380,7 +380,7 @@ describe('RulesPage variant editing', () => {
     vi.doUnmock('@/lib/api');
   });
 
-  it('disables the remove button only when a single variant remains', async () => {
+  it('the control row has no remove button, only added rows do', async () => {
     vi.resetModules();
     vi.doMock('@/lib/api', () => ({
       flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
@@ -399,22 +399,19 @@ describe('RulesPage variant editing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    const removeButtons = screen.getAllByLabelText('Remove variant');
-    expect(removeButtons).toHaveLength(2);
-    for (const button of removeButtons) {
-      expect(button).not.toBeDisabled();
-    }
+    // multivariateFlag has one control row and one treatment row: only the
+    // treatment row gets a remove button, since the control can't be removed.
+    expect(screen.getAllByLabelText('Remove variant')).toHaveLength(1);
 
-    fireEvent.click(removeButtons[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add variant' }));
 
-    const remaining = screen.getAllByLabelText('Remove variant');
-    expect(remaining).toHaveLength(1);
-    expect(remaining[0]).toBeDisabled();
+    // The newly added row is removable too.
+    expect(screen.getAllByLabelText('Remove variant')).toHaveLength(2);
 
     vi.doUnmock('@/lib/api');
   });
 
-  it('promotes another row to control when the control row is removed', async () => {
+  it('recalculates the control percentage when a non-control row is removed', async () => {
     vi.resetModules();
     vi.doMock('@/lib/api', () => ({
       flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
@@ -433,17 +430,11 @@ describe('RulesPage variant editing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    // multivariateFlag's first row (variant-1, "control") is the control row.
-    const removeButtons = screen.getAllByLabelText('Remove variant');
-    fireEvent.click(removeButtons[0]);
+    fireEvent.click(screen.getByLabelText('Remove variant'));
 
-    expect(screen.queryByDisplayValue('control')).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue('treatment')).toBeInTheDocument();
-    // The promoted row's percentage becomes derived, read-only text.
+    expect(screen.queryByDisplayValue('treatment')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('control')).toBeInTheDocument();
     expect(screen.getByText('100%')).toBeInTheDocument();
-    expect(document.body.querySelectorAll('input[type="number"]')).toHaveLength(
-      0,
-    );
 
     vi.doUnmock('@/lib/api');
   });
@@ -510,8 +501,8 @@ describe('RulesPage variant editing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    const removeButtons = screen.getAllByLabelText('Remove variant');
-    fireEvent.click(removeButtons[1]); // remove the treatment row
+    // Only the treatment row has a remove button; the control row has none.
+    fireEvent.click(screen.getByLabelText('Remove variant'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 

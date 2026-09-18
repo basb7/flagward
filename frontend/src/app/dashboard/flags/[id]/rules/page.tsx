@@ -719,16 +719,17 @@ export default function RulesPage() {
                         />
                       )}
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeVariantDraft(index)}
-                      disabled={variantDrafts.length <= 1}
-                      aria-label={t('removeVariantAriaLabel')}
-                    >
-                      &times;
-                    </Button>
+                    {row.is_control ? null : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeVariantDraft(index)}
+                        aria-label={t('removeVariantAriaLabel')}
+                      >
+                        &times;
+                      </Button>
+                    )}
                   </div>
                 ))}
                 <Button
