@@ -292,17 +292,19 @@ describe('RulesPage variant editing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
     // Same hidden-thumb pattern as the rollout slider: query the range input.
+    // Index 0 is the control's slider, which is disabled (derived from the
+    // other variants), so this drags the editable treatment slider instead.
     const sliders = document.body.querySelectorAll('input[type="range"]');
     expect(sliders.length).toBeGreaterThan(0);
-    fireEvent.change(sliders[0], { target: { value: '30' } });
+    fireEvent.change(sliders[1], { target: { value: '30' } });
 
     expect(numberInputWithValue('30')).toBeInTheDocument();
 
     vi.doUnmock('@/lib/api');
   });
 
-  it('warns and blocks saving when the edited percentages do not sum to 100', async () => {
-    const replaceSetSpy = vi.fn();
+  it('recalculates the control percentage automatically and never blocks saving', async () => {
+    const replaceSetSpy = vi.fn(() => Promise.resolve([]));
     vi.resetModules();
     vi.doMock('@/lib/api', () => ({
       flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
@@ -321,15 +323,17 @@ describe('RulesPage variant editing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    fireEvent.change(numberInputWithValue('60'), {
-      target: { value: '50' },
+    fireEvent.change(numberInputWithValue('40'), {
+      target: { value: '30' },
     });
 
-    expect(screen.getByText(/must sum to 100/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(numberInputWithValue('70')).toBeInTheDocument();
+    expect(numberInputWithValue('70')).toBeDisabled();
+    expect(screen.queryByText(/must sum to 100/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(replaceSetSpy).not.toHaveBeenCalled();
+    await waitFor(() => expect(replaceSetSpy).toHaveBeenCalledTimes(1));
 
     vi.doUnmock('@/lib/api');
   });
@@ -354,9 +358,6 @@ describe('RulesPage variant editing', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    fireEvent.change(numberInputWithValue('60'), {
-      target: { value: '70' },
-    });
     fireEvent.change(numberInputWithValue('40'), {
       target: { value: '30' },
     });

@@ -80,28 +80,59 @@ export default function FlagsPage() {
     description: '',
     flag_type: 'BOOLEAN' as 'BOOLEAN' | 'MULTIVARIATE',
   });
+  type VariantRow = {
+    id: string;
+    name: string;
+    percentage_allocation: string;
+    is_control: boolean;
+  };
+
   const makeVariantRow = (
     overrides: Partial<{
       name: string;
       percentage_allocation: string;
       is_control: boolean;
     }> = {},
-  ) => ({
+  ): VariantRow => ({
     id: crypto.randomUUID(),
     name: '',
-    percentage_allocation: '',
+    percentage_allocation: '0',
     is_control: false,
     ...overrides,
   });
 
-  const [variantRows, setVariantRows] = useState<
-    {
-      id: string;
-      name: string;
-      percentage_allocation: string;
-      is_control: boolean;
-    }[]
-  >(() => [makeVariantRow({ is_control: true }), makeVariantRow()]);
+  // The control variant is never edited directly: its percentage is always
+  // `100 - sum(other variants)`, mirroring Flagsmith's variant editor.
+  const recalcControlPercentage = (rows: VariantRow[]): VariantRow[] => {
+    const controlIndex = rows.findIndex((row) => row.is_control);
+    if (controlIndex === -1) return rows;
+    const nonControlSum = rows.reduce(
+      (sum, row, i) =>
+        i === controlIndex
+          ? sum
+          : sum + (Number(row.percentage_allocation) || 0),
+      0,
+    );
+    const controlValue = Math.max(0, Math.min(100, 100 - nonControlSum));
+    return rows.map((row, i) =>
+      i === controlIndex
+        ? { ...row, percentage_allocation: String(controlValue) }
+        : row,
+    );
+  };
+
+  const getNonControlHeadroom = (rows: VariantRow[], index: number) => {
+    const otherNonControlSum = rows.reduce((sum, row, i) => {
+      if (i === index || row.is_control) return sum;
+      return sum + (Number(row.percentage_allocation) || 0);
+    }, 0);
+    return Math.max(0, 100 - otherNonControlSum);
+  };
+
+  const [variantRows, setVariantRows] = useState<VariantRow[]>(() => [
+    makeVariantRow({ is_control: true, percentage_allocation: '100' }),
+    makeVariantRow(),
+  ]);
 
   const resetFlagForm = () => {
     setNewFlag({
@@ -111,7 +142,10 @@ export default function FlagsPage() {
       description: '',
       flag_type: 'BOOLEAN',
     });
-    setVariantRows([makeVariantRow({ is_control: true }), makeVariantRow()]);
+    setVariantRows([
+      makeVariantRow({ is_control: true, percentage_allocation: '100' }),
+      makeVariantRow(),
+    ]);
   };
 
   const variantPercentageTotal = variantRows.reduce(
@@ -120,7 +154,9 @@ export default function FlagsPage() {
   );
 
   const addVariantRow = () => {
-    setVariantRows((rows) => [...rows, makeVariantRow()]);
+    setVariantRows((rows) =>
+      recalcControlPercentage([...rows, makeVariantRow()]),
+    );
   };
 
   const removeVariantRow = (index: number) => {
@@ -129,7 +165,7 @@ export default function FlagsPage() {
       if (next.length > 0 && !next.some((row) => row.is_control)) {
         next[0].is_control = true;
       }
-      return next;
+      return recalcControlPercentage(next);
     });
   };
 
@@ -141,13 +177,30 @@ export default function FlagsPage() {
       is_control: boolean;
     }>,
   ) => {
-    setVariantRows((rows) =>
-      rows.map((row, i) => {
-        if (i === index) return { ...row, ...patch };
+    setVariantRows((rows) => {
+      const isControlRow = rows[index].is_control;
+      const nextPatch =
+        patch.percentage_allocation !== undefined && !isControlRow
+          ? {
+              ...patch,
+              percentage_allocation: String(
+                Math.max(
+                  0,
+                  Math.min(
+                    Number(patch.percentage_allocation) || 0,
+                    getNonControlHeadroom(rows, index),
+                  ),
+                ),
+              ),
+            }
+          : patch;
+      const next = rows.map((row, i) => {
+        if (i === index) return { ...row, ...nextPatch };
         if (patch.is_control) return { ...row, is_control: false };
         return row;
-      }),
-    );
+      });
+      return recalcControlPercentage(next);
+    });
   };
 
   const loadData = useCallback(async () => {
@@ -472,6 +525,13 @@ export default function FlagsPage() {
                                   percentage_allocation: e.target.value,
                                 })
                               }
+                              min={0}
+                              max={
+                                row.is_control
+                                  ? 100
+                                  : getNonControlHeadroom(variantRows, index)
+                              }
+                              disabled={row.is_control}
                               className="w-24"
                             />
                             <div className="flex items-center gap-1.5 whitespace-nowrap">
@@ -527,8 +587,13 @@ export default function FlagsPage() {
                           </div>
                           <Slider
                             min={0}
-                            max={100}
+                            max={
+                              row.is_control
+                                ? 100
+                                : getNonControlHeadroom(variantRows, index)
+                            }
                             value={[Number(row.percentage_allocation) || 0]}
+                            disabled={row.is_control}
                             onValueChange={(value) =>
                               updateVariantRow(index, {
                                 percentage_allocation: String(

@@ -95,15 +95,15 @@ export default function RulesPage() {
     operator: 'EQUALS',
     value: '',
   });
+  type VariantDraft = {
+    id: string;
+    name: string;
+    percentage_allocation: string;
+    is_control: boolean;
+  };
+
   const [isEditingVariants, setIsEditingVariants] = useState(false);
-  const [variantDrafts, setVariantDrafts] = useState<
-    {
-      id: string;
-      name: string;
-      percentage_allocation: string;
-      is_control: boolean;
-    }[]
-  >([]);
+  const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([]);
   const [isSavingVariants, setIsSavingVariants] = useState(false);
 
   const variantDraftTotal = variantDrafts.reduce(
@@ -113,6 +113,34 @@ export default function RulesPage() {
   const isVariantEditValid =
     variantDraftTotal === 100 &&
     variantDrafts.every((row) => row.name.trim() !== '');
+
+  // The control variant is never edited directly: its percentage is always
+  // `100 - sum(other variants)`, mirroring Flagsmith's variant editor.
+  const recalcControlPercentage = (rows: VariantDraft[]): VariantDraft[] => {
+    const controlIndex = rows.findIndex((row) => row.is_control);
+    if (controlIndex === -1) return rows;
+    const nonControlSum = rows.reduce(
+      (sum, row, i) =>
+        i === controlIndex
+          ? sum
+          : sum + (Number(row.percentage_allocation) || 0),
+      0,
+    );
+    const controlValue = Math.max(0, Math.min(100, 100 - nonControlSum));
+    return rows.map((row, i) =>
+      i === controlIndex
+        ? { ...row, percentage_allocation: String(controlValue) }
+        : row,
+    );
+  };
+
+  const getNonControlHeadroom = (rows: VariantDraft[], index: number) => {
+    const otherNonControlSum = rows.reduce((sum, row, i) => {
+      if (i === index || row.is_control) return sum;
+      return sum + (Number(row.percentage_allocation) || 0);
+    }, 0);
+    return Math.max(0, 100 - otherNonControlSum);
+  };
 
   const startEditingVariants = () => {
     if (!flag) return;
@@ -135,13 +163,30 @@ export default function RulesPage() {
       is_control: boolean;
     }>,
   ) => {
-    setVariantDrafts((rows) =>
-      rows.map((row, i) => {
-        if (i === index) return { ...row, ...patch };
+    setVariantDrafts((rows) => {
+      const isControlRow = rows[index].is_control;
+      const nextPatch =
+        patch.percentage_allocation !== undefined && !isControlRow
+          ? {
+              ...patch,
+              percentage_allocation: String(
+                Math.max(
+                  0,
+                  Math.min(
+                    Number(patch.percentage_allocation) || 0,
+                    getNonControlHeadroom(rows, index),
+                  ),
+                ),
+              ),
+            }
+          : patch;
+      const next = rows.map((row, i) => {
+        if (i === index) return { ...row, ...nextPatch };
         if (patch.is_control) return { ...row, is_control: false };
         return row;
-      }),
-    );
+      });
+      return recalcControlPercentage(next);
+    });
   };
 
   const handleSaveVariants = async () => {
@@ -602,6 +647,13 @@ export default function RulesPage() {
                             percentage_allocation: e.target.value,
                           })
                         }
+                        min={0}
+                        max={
+                          row.is_control
+                            ? 100
+                            : getNonControlHeadroom(variantDrafts, index)
+                        }
+                        disabled={row.is_control}
                         className="w-24"
                       />
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
@@ -621,8 +673,13 @@ export default function RulesPage() {
                     </div>
                     <Slider
                       min={0}
-                      max={100}
+                      max={
+                        row.is_control
+                          ? 100
+                          : getNonControlHeadroom(variantDrafts, index)
+                      }
                       value={[Number(row.percentage_allocation) || 0]}
+                      disabled={row.is_control}
                       onValueChange={(value) =>
                         updateVariantDraft(index, {
                           percentage_allocation: String(

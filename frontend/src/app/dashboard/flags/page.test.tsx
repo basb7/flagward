@@ -85,7 +85,7 @@ describe('FlagsPage create dialog', () => {
     expect(screen.queryByText('Variants')).not.toBeInTheDocument();
   });
 
-  it('shows the variant editor with two rows when Multivariate is selected', async () => {
+  it('shows the variant editor with two rows, control defaulting to 100%', async () => {
     await openCreateDialog();
 
     fireEvent.change(await screen.findByLabelText('Type'), {
@@ -94,9 +94,13 @@ describe('FlagsPage create dialog', () => {
 
     expect(screen.getByText('Variants')).toBeInTheDocument();
     expect(screen.getAllByPlaceholderText('e.g., control')).toHaveLength(2);
+    const percentageInputs = screen.getAllByPlaceholderText('%');
+    expect(percentageInputs[0]).toHaveValue(100);
+    expect(percentageInputs[0]).toBeDisabled();
+    expect(percentageInputs[1]).toHaveValue(0);
   });
 
-  it('warns when variant percentages do not sum to 100', async () => {
+  it('recalculates the control percentage automatically as another variant changes', async () => {
     await openCreateDialog();
 
     fireEvent.change(await screen.findByLabelText('Type'), {
@@ -104,24 +108,29 @@ describe('FlagsPage create dialog', () => {
     });
 
     const percentageInputs = screen.getAllByPlaceholderText('%');
-    fireEvent.change(percentageInputs[0], { target: { value: '50' } });
     fireEvent.change(percentageInputs[1], { target: { value: '30' } });
 
-    expect(screen.getByText(/must sum to 100/i)).toBeInTheDocument();
+    expect(percentageInputs[0]).toHaveValue(70);
+    expect(screen.queryByText(/must sum to 100/i)).not.toBeInTheDocument();
   });
 
-  it('does not warn once variant percentages sum to 100', async () => {
+  it('clamps a variant percentage so the total can never exceed 100', async () => {
     await openCreateDialog();
 
     fireEvent.change(await screen.findByLabelText('Type'), {
       target: { value: 'MULTIVARIATE' },
     });
 
-    const percentageInputs = screen.getAllByPlaceholderText('%');
-    fireEvent.change(percentageInputs[0], { target: { value: '60' } });
-    fireEvent.change(percentageInputs[1], { target: { value: '40' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add variant/i }));
 
-    expect(screen.queryByText(/must sum to 100/i)).not.toBeInTheDocument();
+    const percentageInputs = screen.getAllByPlaceholderText('%');
+    fireEvent.change(percentageInputs[1], { target: { value: '90' } });
+    expect(percentageInputs[0]).toHaveValue(10);
+
+    fireEvent.change(percentageInputs[2], { target: { value: '50' } });
+
+    expect(percentageInputs[2]).toHaveValue(10);
+    expect(percentageInputs[0]).toHaveValue(0);
   });
 
   it('keeps exactly one control variant switch on at a time', async () => {
@@ -161,7 +170,6 @@ describe('FlagsPage create dialog', () => {
     const nameInputs = screen.getAllByPlaceholderText('e.g., control');
     const percentageInputs = screen.getAllByPlaceholderText('%');
     fireEvent.change(nameInputs[0], { target: { value: 'control' } });
-    fireEvent.change(percentageInputs[0], { target: { value: '50' } });
     fireEvent.change(nameInputs[1], { target: { value: 'treatment_a' } });
     fireEvent.change(percentageInputs[1], { target: { value: '50' } });
 
@@ -172,37 +180,6 @@ describe('FlagsPage create dialog', () => {
       { name: 'control', percentage_allocation: 50, is_control: true },
       { name: 'treatment_a', percentage_allocation: 50, is_control: false },
     ]);
-  });
-
-  it('does not create the flag at all when variant percentages are invalid', async () => {
-    await openCreateDialog();
-
-    fireEvent.change(await screen.findByLabelText('Environment'), {
-      target: { value: 'env-1' },
-    });
-    fireEvent.change(screen.getByLabelText('Key'), {
-      target: { value: 'checkout-button' },
-    });
-    fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: 'Checkout Button' },
-    });
-    fireEvent.change(screen.getByLabelText('Type'), {
-      target: { value: 'MULTIVARIATE' },
-    });
-
-    const nameInputs = screen.getAllByPlaceholderText('e.g., control');
-    const percentageInputs = screen.getAllByPlaceholderText('%');
-    fireEvent.change(nameInputs[0], { target: { value: 'control' } });
-    fireEvent.change(percentageInputs[0], { target: { value: '50' } });
-    fireEvent.change(nameInputs[1], { target: { value: 'treatment_a' } });
-    fireEvent.change(percentageInputs[1], { target: { value: '30' } });
-
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-
-    expect(createFlag).not.toHaveBeenCalled();
-    expect(bulkCreateVariants).not.toHaveBeenCalled();
   });
 
   it('does not create variants for a Boolean flag', async () => {
