@@ -292,11 +292,11 @@ describe('RulesPage variant editing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
     // Same hidden-thumb pattern as the rollout slider: query the range input.
-    // Index 0 is the control's slider, which is disabled (derived from the
-    // other variants), so this drags the editable treatment slider instead.
+    // The control variant has no slider (its percentage is derived), so the
+    // only one rendered here is the editable treatment slider.
     const sliders = document.body.querySelectorAll('input[type="range"]');
     expect(sliders.length).toBeGreaterThan(0);
-    fireEvent.change(sliders[1], { target: { value: '30' } });
+    fireEvent.change(sliders[0], { target: { value: '30' } });
 
     expect(numberInputWithValue('30')).toBeInTheDocument();
 

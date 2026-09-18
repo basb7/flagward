@@ -671,23 +671,20 @@ export default function RulesPage() {
                         </span>
                       </div>
                     </div>
-                    <Slider
-                      min={0}
-                      max={
-                        row.is_control
-                          ? 100
-                          : getNonControlHeadroom(variantDrafts, index)
-                      }
-                      value={[Number(row.percentage_allocation) || 0]}
-                      disabled={row.is_control}
-                      onValueChange={(value) =>
-                        updateVariantDraft(index, {
-                          percentage_allocation: String(
-                            Array.isArray(value) ? value[0] : value,
-                          ),
-                        })
-                      }
-                    />
+                    {row.is_control ? null : (
+                      <Slider
+                        min={0}
+                        max={getNonControlHeadroom(variantDrafts, index)}
+                        value={[Number(row.percentage_allocation) || 0]}
+                        onValueChange={(value) =>
+                          updateVariantDraft(index, {
+                            percentage_allocation: String(
+                              Array.isArray(value) ? value[0] : value,
+                            ),
+                          })
+                        }
+                      />
+                    )}
                   </div>
                 ))}
                 {variantDraftTotal !== 100 ? (

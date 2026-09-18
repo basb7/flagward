@@ -585,23 +585,20 @@ export default function FlagsPage() {
                               &times;
                             </Button>
                           </div>
-                          <Slider
-                            min={0}
-                            max={
-                              row.is_control
-                                ? 100
-                                : getNonControlHeadroom(variantRows, index)
-                            }
-                            value={[Number(row.percentage_allocation) || 0]}
-                            disabled={row.is_control}
-                            onValueChange={(value) =>
-                              updateVariantRow(index, {
-                                percentage_allocation: String(
-                                  Array.isArray(value) ? value[0] : value,
-                                ),
-                              })
-                            }
-                          />
+                          {row.is_control ? null : (
+                            <Slider
+                              min={0}
+                              max={getNonControlHeadroom(variantRows, index)}
+                              value={[Number(row.percentage_allocation) || 0]}
+                              onValueChange={(value) =>
+                                updateVariantRow(index, {
+                                  percentage_allocation: String(
+                                    Array.isArray(value) ? value[0] : value,
+                                  ),
+                                })
+                              }
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
