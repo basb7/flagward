@@ -1,6 +1,6 @@
 'use client';
 
-import { Info, Lock, MoreHorizontal, Plus } from 'lucide-react';
+import { Lock, MoreHorizontal, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -33,7 +33,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
-import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -44,11 +43,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import {
   type Environment,
   environmentsApi,
@@ -494,81 +488,45 @@ export default function FlagsPage() {
                     </Label>
                     <div className="space-y-2">
                       {variantRows.map((row, index) => (
-                        <div key={row.id} className="space-y-1">
-                          <div className="flex items-center gap-2">
+                        <div key={row.id} className="flex items-center gap-2">
+                          <Input
+                            placeholder={t('variantNamePlaceholder')}
+                            value={row.name}
+                            onChange={(e) =>
+                              updateVariantRow(index, {
+                                name: e.target.value,
+                              })
+                            }
+                          />
+                          {row.is_control ? (
+                            <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
+                              {row.percentage_allocation}%
+                            </span>
+                          ) : (
                             <Input
-                              placeholder={t('variantNamePlaceholder')}
-                              value={row.name}
+                              type="number"
+                              placeholder={t('variantPercentagePlaceholder')}
+                              value={row.percentage_allocation}
                               onChange={(e) =>
                                 updateVariantRow(index, {
-                                  name: e.target.value,
+                                  percentage_allocation: e.target.value,
                                 })
                               }
-                            />
-                            {row.is_control ? (
-                              <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
-                                {row.percentage_allocation}%
-                              </span>
-                            ) : (
-                              <Input
-                                type="number"
-                                placeholder={t('variantPercentagePlaceholder')}
-                                value={row.percentage_allocation}
-                                onChange={(e) =>
-                                  updateVariantRow(index, {
-                                    percentage_allocation: e.target.value,
-                                  })
-                                }
-                                min={0}
-                                max={getNonControlHeadroom(variantRows, index)}
-                                className="w-24"
-                              />
-                            )}
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-6 text-muted-foreground"
-                                    aria-label={t(
-                                      'variantControlTooltipAriaLabel',
-                                    )}
-                                  />
-                                }
-                              >
-                                <Info className="size-3.5" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {t('variantControlTooltip')}
-                              </TooltipContent>
-                            </Tooltip>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeVariantRow(index)}
-                              disabled={variantRows.length <= 1}
-                              aria-label={t('removeVariantAriaLabel')}
-                            >
-                              &times;
-                            </Button>
-                          </div>
-                          {row.is_control ? null : (
-                            <Slider
                               min={0}
                               max={getNonControlHeadroom(variantRows, index)}
-                              value={[Number(row.percentage_allocation) || 0]}
-                              onValueChange={(value) =>
-                                updateVariantRow(index, {
-                                  percentage_allocation: String(
-                                    Array.isArray(value) ? value[0] : value,
-                                  ),
-                                })
-                              }
+                              className="w-24"
                             />
                           )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeVariantRow(index)}
+                            disabled={variantRows.length <= 1}
+                            aria-label={t('removeVariantAriaLabel')}
+                          >
+                            &times;
+                          </Button>
                         </div>
                       ))}
                     </div>

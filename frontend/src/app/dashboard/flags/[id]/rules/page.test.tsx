@@ -272,37 +272,6 @@ describe('RulesPage variant editing', () => {
     vi.doUnmock('@/lib/api');
   });
 
-  it('moving a variant slider updates its manual percentage input', async () => {
-    vi.resetModules();
-    vi.doMock('@/lib/api', () => ({
-      flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
-      rulesApi: {
-        list: vi.fn(() => Promise.resolve({ results: [] })),
-        create: vi.fn(),
-      },
-      conditionsApi: {},
-      variantsApi: { replaceSet: vi.fn() },
-    }));
-    const { default: RulesPageWithData } = await import('./page');
-    renderWithIntl(<RulesPageWithData />);
-
-    await waitFor(() =>
-      expect(screen.getByText('Variant Breakdown')).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-
-    // Same hidden-thumb pattern as the rollout slider: query the range input.
-    // The control variant has no slider (its percentage is derived), so the
-    // only one rendered here is the editable treatment slider.
-    const sliders = document.body.querySelectorAll('input[type="range"]');
-    expect(sliders.length).toBeGreaterThan(0);
-    fireEvent.change(sliders[0], { target: { value: '30' } });
-
-    expect(numberInputWithValue('30')).toBeInTheDocument();
-
-    vi.doUnmock('@/lib/api');
-  });
-
   it('recalculates the control percentage automatically and never blocks saving', async () => {
     const replaceSetSpy = vi.fn(() => Promise.resolve([]));
     vi.resetModules();

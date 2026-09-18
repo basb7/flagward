@@ -311,8 +311,6 @@
     "updateErrorFallback": "No se pudo actualizar el flag.",
     "updateSuccessToast": "Flag actualizado correctamente.",
     "variantControlLabel": "Control",
-    "variantControlTooltip": "La variante de control es la base: es lo que ven los usuarios cuando ninguna regla de segmentación fuerza otra variante, y también es la variante de respaldo cuando no hay un id de usuario estable para calcular el reparto por porcentaje.",
-    "variantControlTooltipAriaLabel": "¿Qué significa la variante de control?",
     "variantNamePlaceholder": "p. ej., control",
     "variantPercentageMismatchWarning": "Los porcentajes de las variantes deben sumar 100 (actualmente {total})",
     "variantPercentagePlaceholder": "%",

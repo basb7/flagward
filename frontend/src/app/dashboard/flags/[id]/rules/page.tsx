@@ -625,45 +625,29 @@ export default function RulesPage() {
             {isEditingVariants ? (
               <div className="space-y-3">
                 {variantDrafts.map((row, index) => (
-                  <div key={row.id} className="space-y-1">
-                    <div className="flex items-center gap-2">
+                  <div key={row.id} className="flex items-center gap-2">
+                    <Input
+                      value={row.name}
+                      onChange={(e) =>
+                        updateVariantDraft(index, { name: e.target.value })
+                      }
+                    />
+                    {row.is_control ? (
+                      <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
+                        {row.percentage_allocation}%
+                      </span>
+                    ) : (
                       <Input
-                        value={row.name}
+                        type="number"
+                        value={row.percentage_allocation}
                         onChange={(e) =>
-                          updateVariantDraft(index, { name: e.target.value })
-                        }
-                      />
-                      {row.is_control ? (
-                        <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
-                          {row.percentage_allocation}%
-                        </span>
-                      ) : (
-                        <Input
-                          type="number"
-                          value={row.percentage_allocation}
-                          onChange={(e) =>
-                            updateVariantDraft(index, {
-                              percentage_allocation: e.target.value,
-                            })
-                          }
-                          min={0}
-                          max={getNonControlHeadroom(variantDrafts, index)}
-                          className="w-24"
-                        />
-                      )}
-                    </div>
-                    {row.is_control ? null : (
-                      <Slider
-                        min={0}
-                        max={getNonControlHeadroom(variantDrafts, index)}
-                        value={[Number(row.percentage_allocation) || 0]}
-                        onValueChange={(value) =>
                           updateVariantDraft(index, {
-                            percentage_allocation: String(
-                              Array.isArray(value) ? value[0] : value,
-                            ),
+                            percentage_allocation: e.target.value,
                           })
                         }
+                        min={0}
+                        max={getNonControlHeadroom(variantDrafts, index)}
+                        className="w-24"
                       />
                     )}
                   </div>

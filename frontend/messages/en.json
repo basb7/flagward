@@ -311,8 +311,6 @@
     "updateErrorFallback": "Failed to update flag",
     "updateSuccessToast": "Flag updated successfully",
     "variantControlLabel": "Control",
-    "variantControlTooltip": "The control variant is the baseline: it's what users see when no targeting rule forces a different variant, and it's also the fallback returned when there's no stable user id to compute the percentage split.",
-    "variantControlTooltipAriaLabel": "What does the control variant mean?",
     "variantNamePlaceholder": "e.g., control",
     "variantPercentageMismatchWarning": "Variant percentages must sum to 100 (currently {total})",
     "variantPercentagePlaceholder": "%",
