@@ -108,7 +108,24 @@ export default function RulesPage() {
 
   const [isEditingVariants, setIsEditingVariants] = useState(false);
   const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([]);
+  const [originalVariantIds, setOriginalVariantIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [isSavingVariants, setIsSavingVariants] = useState(false);
+
+  const makeVariantDraft = (
+    overrides: Partial<{
+      name: string;
+      percentage_allocation: string;
+      is_control: boolean;
+    }> = {},
+  ): VariantDraft => ({
+    id: crypto.randomUUID(),
+    name: '',
+    percentage_allocation: '0',
+    is_control: false,
+    ...overrides,
+  });
 
   const isVariantEditValid = variantDrafts.every(
     (row) => row.name.trim() !== '',
@@ -144,6 +161,7 @@ export default function RulesPage() {
 
   const startEditingVariants = () => {
     if (!flag) return;
+    setOriginalVariantIds(new Set(flag.variants.map((variant) => variant.id)));
     setVariantDrafts(
       flag.variants.map((variant) => ({
         id: variant.id,
@@ -153,6 +171,22 @@ export default function RulesPage() {
       })),
     );
     setIsEditingVariants(true);
+  };
+
+  const addVariantDraft = () => {
+    setVariantDrafts((rows) =>
+      recalcControlPercentage([...rows, makeVariantDraft()]),
+    );
+  };
+
+  const removeVariantDraft = (index: number) => {
+    setVariantDrafts((rows) => {
+      const next = rows.filter((_, i) => i !== index);
+      if (next.length > 0 && !next.some((row) => row.is_control)) {
+        next[0].is_control = true;
+      }
+      return recalcControlPercentage(next);
+    });
   };
 
   const updateVariantDraft = (
@@ -196,7 +230,7 @@ export default function RulesPage() {
       await variantsApi.replaceSet(
         flag.id,
         variantDrafts.map((row) => ({
-          id: row.id,
+          ...(originalVariantIds.has(row.id) ? { id: row.id } : {}),
           name: row.name,
           percentage_allocation: Number(row.percentage_allocation) || 0,
           is_control: row.is_control,
@@ -685,8 +719,26 @@ export default function RulesPage() {
                         />
                       )}
                     </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeVariantDraft(index)}
+                      disabled={variantDrafts.length <= 1}
+                      aria-label={t('removeVariantAriaLabel')}
+                    >
+                      &times;
+                    </Button>
                   </div>
                 ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addVariantDraft}
+                >
+                  {t('addVariantButton')}
+                </Button>
                 <div className="flex justify-end gap-2">
                   <Button
                     variant="outline"

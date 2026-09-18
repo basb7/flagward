@@ -351,6 +351,182 @@ describe('RulesPage variant editing', () => {
 
     vi.doUnmock('@/lib/api');
   });
+
+  it('adds a new empty row when Add variant is clicked', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/api', () => ({
+      flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
+      rulesApi: {
+        list: vi.fn(() => Promise.resolve({ results: [] })),
+        create: vi.fn(),
+      },
+      conditionsApi: {},
+      variantsApi: { replaceSet: vi.fn() },
+    }));
+    const { default: RulesPageWithData } = await import('./page');
+    renderWithIntl(<RulesPageWithData />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Variant Breakdown')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add variant' }));
+
+    expect(screen.getAllByRole('textbox')).toHaveLength(3);
+
+    vi.doUnmock('@/lib/api');
+  });
+
+  it('disables the remove button only when a single variant remains', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/api', () => ({
+      flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
+      rulesApi: {
+        list: vi.fn(() => Promise.resolve({ results: [] })),
+        create: vi.fn(),
+      },
+      conditionsApi: {},
+      variantsApi: { replaceSet: vi.fn() },
+    }));
+    const { default: RulesPageWithData } = await import('./page');
+    renderWithIntl(<RulesPageWithData />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Variant Breakdown')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    const removeButtons = screen.getAllByLabelText('Remove variant');
+    expect(removeButtons).toHaveLength(2);
+    for (const button of removeButtons) {
+      expect(button).not.toBeDisabled();
+    }
+
+    fireEvent.click(removeButtons[0]);
+
+    const remaining = screen.getAllByLabelText('Remove variant');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toBeDisabled();
+
+    vi.doUnmock('@/lib/api');
+  });
+
+  it('promotes another row to control when the control row is removed', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/api', () => ({
+      flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
+      rulesApi: {
+        list: vi.fn(() => Promise.resolve({ results: [] })),
+        create: vi.fn(),
+      },
+      conditionsApi: {},
+      variantsApi: { replaceSet: vi.fn() },
+    }));
+    const { default: RulesPageWithData } = await import('./page');
+    renderWithIntl(<RulesPageWithData />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Variant Breakdown')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    // multivariateFlag's first row (variant-1, "control") is the control row.
+    const removeButtons = screen.getAllByLabelText('Remove variant');
+    fireEvent.click(removeButtons[0]);
+
+    expect(screen.queryByDisplayValue('control')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('treatment')).toBeInTheDocument();
+    // The promoted row's percentage becomes derived, read-only text.
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(document.body.querySelectorAll('input[type="number"]')).toHaveLength(
+      0,
+    );
+
+    vi.doUnmock('@/lib/api');
+  });
+
+  it('omits the id of a newly added row when saving', async () => {
+    const replaceSetSpy = vi.fn((_flagId: string, _variants: unknown[]) =>
+      Promise.resolve([]),
+    );
+    vi.resetModules();
+    vi.doMock('@/lib/api', () => ({
+      flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
+      rulesApi: {
+        list: vi.fn(() => Promise.resolve({ results: [] })),
+        create: vi.fn(),
+      },
+      conditionsApi: {},
+      variantsApi: { replaceSet: replaceSetSpy },
+    }));
+    const { default: RulesPageWithData } = await import('./page');
+    renderWithIntl(<RulesPageWithData />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Variant Breakdown')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add variant' }));
+
+    const nameInputs = screen.getAllByRole('textbox');
+    fireEvent.change(nameInputs[2], { target: { value: 'treatment_b' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(replaceSetSpy).toHaveBeenCalledTimes(1));
+    const payload = replaceSetSpy.mock.calls[0][1];
+    expect(payload).toHaveLength(3);
+    expect(payload[0]).toHaveProperty('id', 'variant-1');
+    expect(payload[1]).toHaveProperty('id', 'variant-2');
+    expect(payload[2]).not.toHaveProperty('id');
+    expect(payload[2]).toMatchObject({
+      name: 'treatment_b',
+      is_control: false,
+    });
+
+    vi.doUnmock('@/lib/api');
+  });
+
+  it('omits the removed id when saving after removing a row', async () => {
+    const replaceSetSpy = vi.fn(() => Promise.resolve([]));
+    vi.resetModules();
+    vi.doMock('@/lib/api', () => ({
+      flagsApi: { get: vi.fn(() => Promise.resolve(multivariateFlag)) },
+      rulesApi: {
+        list: vi.fn(() => Promise.resolve({ results: [] })),
+        create: vi.fn(),
+      },
+      conditionsApi: {},
+      variantsApi: { replaceSet: replaceSetSpy },
+    }));
+    const { default: RulesPageWithData } = await import('./page');
+    renderWithIntl(<RulesPageWithData />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Variant Breakdown')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    const removeButtons = screen.getAllByLabelText('Remove variant');
+    fireEvent.click(removeButtons[1]); // remove the treatment row
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(replaceSetSpy).toHaveBeenCalledTimes(1));
+    expect(replaceSetSpy).toHaveBeenCalledWith('flag-1', [
+      {
+        id: 'variant-1',
+        name: 'control',
+        percentage_allocation: 100,
+        is_control: true,
+      },
+    ]);
+
+    vi.doUnmock('@/lib/api');
+  });
 });
 
 describe('RulesPage rule editing', () => {

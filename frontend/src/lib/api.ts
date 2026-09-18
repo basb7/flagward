@@ -445,15 +445,17 @@ export const variantsApi = {
     }),
 
   /**
-   * Replaces a flag's existing variant set in one atomic request. The
-   * submitted list must include every existing variant's id, unchanged or
-   * not -- editing two rows independently through PATCH would validate each
-   * one against the *other*'s stale percentage and reject valid rebalances.
+   * Creates, updates, and deletes a flag's variant set in one atomic
+   * request, validated as a whole (percentages summing to 100, exactly one
+   * control) -- editing rows independently through PATCH would validate
+   * each one against the *others*' stale percentages and reject valid
+   * rebalances. An item with no `id` is created; an existing id omitted
+   * from the list is deleted.
    */
   replaceSet: (
     flagId: string,
     variants: {
-      id: string;
+      id?: string;
       name: string;
       percentage_allocation: number;
       is_control: boolean;
