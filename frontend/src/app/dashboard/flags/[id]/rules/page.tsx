@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -27,7 +27,9 @@ import { Label } from '@/components/ui/label';
 import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
 import {
   Table,
   TableBody,
@@ -43,6 +45,7 @@ import {
   flagsApi,
   rulesApi,
   type StrategyRule,
+  variantsApi,
 } from '@/lib/api';
 import { useToast } from '@/lib/toast-context';
 
@@ -75,6 +78,7 @@ export default function RulesPage() {
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
   const [isConditionDialogOpen, setIsConditionDialogOpen] = useState(false);
   const [selectedRule, setSelectedRule] = useState<StrategyRule | null>(null);
+  const [editingRule, setEditingRule] = useState<StrategyRule | null>(null);
   const [editingCondition, setEditingCondition] = useState<Condition | null>(
     null,
   );
@@ -82,12 +86,88 @@ export default function RulesPage() {
   const [newRule, setNewRule] = useState({
     priority: 1,
     operator_logic: 'AND' as 'AND' | 'OR',
+    rollout_variant: '',
+    rollout_percentage: '100',
   });
   const [newCondition, setNewCondition] = useState({
     attribute: '',
     operator: 'EQUALS',
     value: '',
   });
+  const [isEditingVariants, setIsEditingVariants] = useState(false);
+  const [variantDrafts, setVariantDrafts] = useState<
+    {
+      id: string;
+      name: string;
+      percentage_allocation: string;
+      is_control: boolean;
+    }[]
+  >([]);
+  const [isSavingVariants, setIsSavingVariants] = useState(false);
+
+  const variantDraftTotal = variantDrafts.reduce(
+    (sum, row) => sum + (Number(row.percentage_allocation) || 0),
+    0,
+  );
+  const isVariantEditValid =
+    variantDraftTotal === 100 &&
+    variantDrafts.every((row) => row.name.trim() !== '');
+
+  const startEditingVariants = () => {
+    if (!flag) return;
+    setVariantDrafts(
+      flag.variants.map((variant) => ({
+        id: variant.id,
+        name: variant.name,
+        percentage_allocation: String(variant.percentage_allocation),
+        is_control: variant.is_control,
+      })),
+    );
+    setIsEditingVariants(true);
+  };
+
+  const updateVariantDraft = (
+    index: number,
+    patch: Partial<{
+      name: string;
+      percentage_allocation: string;
+      is_control: boolean;
+    }>,
+  ) => {
+    setVariantDrafts((rows) =>
+      rows.map((row, i) => {
+        if (i === index) return { ...row, ...patch };
+        if (patch.is_control) return { ...row, is_control: false };
+        return row;
+      }),
+    );
+  };
+
+  const handleSaveVariants = async () => {
+    if (!flag || !isVariantEditValid) return;
+
+    setIsSavingVariants(true);
+    try {
+      await variantsApi.replaceSet(
+        flag.id,
+        variantDrafts.map((row) => ({
+          id: row.id,
+          name: row.name,
+          percentage_allocation: Number(row.percentage_allocation) || 0,
+          is_control: row.is_control,
+        })),
+      );
+      setIsEditingVariants(false);
+      loadData();
+      success(t('updateVariantsSuccessToast'));
+    } catch (err) {
+      showError(
+        err instanceof Error ? err.message : t('updateVariantsErrorFallback'),
+      );
+    } finally {
+      setIsSavingVariants(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -108,21 +188,57 @@ export default function RulesPage() {
     loadData();
   }, [loadData]);
 
-  const handleCreateRule = async () => {
+  const resetRuleForm = () => {
+    setEditingRule(null);
+    setNewRule({
+      priority: 1,
+      operator_logic: 'AND',
+      rollout_variant: '',
+      rollout_percentage: '100',
+    });
+  };
+
+  const handleEditRule = (rule: StrategyRule) => {
+    setEditingRule(rule);
+    setNewRule({
+      priority: rule.priority,
+      operator_logic: rule.operator_logic,
+      rollout_variant: rule.rollout_variant ?? '',
+      rollout_percentage: String(rule.rollout_percentage ?? 100),
+    });
+    setIsRuleDialogOpen(true);
+  };
+
+  const handleSaveRule = async () => {
     setIsSaving(true);
     try {
-      await rulesApi.create({
-        flag: flagId,
+      const hasRollout =
+        flag?.flag_type === 'MULTIVARIATE' && newRule.rollout_variant !== '';
+      const payload = {
         priority: newRule.priority,
         operator_logic: newRule.operator_logic,
-      });
+        rollout_variant: hasRollout ? newRule.rollout_variant : null,
+        rollout_percentage: hasRollout
+          ? Number(newRule.rollout_percentage) || 0
+          : null,
+      };
+      if (editingRule) {
+        await rulesApi.update(editingRule.id, payload);
+        success(t('updateRuleSuccessToast'));
+      } else {
+        await rulesApi.create({ flag: flagId, ...payload });
+        success(t('createRuleSuccessToast'));
+      }
       setIsRuleDialogOpen(false);
-      setNewRule({ priority: 1, operator_logic: 'AND' });
+      resetRuleForm();
       loadData();
-      success(t('createRuleSuccessToast'));
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : t('createRuleErrorFallback'),
+        err instanceof Error
+          ? err.message
+          : editingRule
+            ? t('updateRuleErrorFallback')
+            : t('createRuleErrorFallback'),
       );
     } finally {
       setIsSaving(false);
@@ -281,7 +397,13 @@ export default function RulesPage() {
             flagKey: flag.key,
           })}
           action={
-            <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+            <Dialog
+              open={isRuleDialogOpen}
+              onOpenChange={(open) => {
+                setIsRuleDialogOpen(open);
+                if (!open) resetRuleForm();
+              }}
+            >
               <DialogTrigger render={<Button />}>
                 <Plus className="mr-2 h-4 w-4" />
                 {t('newRuleButton')}
@@ -289,10 +411,14 @@ export default function RulesPage() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle className="text-foreground">
-                    {t('createRuleDialogTitle')}
+                    {editingRule
+                      ? t('editRuleDialogTitle')
+                      : t('createRuleDialogTitle')}
                   </DialogTitle>
                   <DialogDescription className="text-muted-foreground">
-                    {t('createRuleDialogDescription')}
+                    {editingRule
+                      ? t('editRuleDialogDescription')
+                      : t('createRuleDialogDescription')}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -333,17 +459,82 @@ export default function RulesPage() {
                       <option value="OR">{t('operatorLogicOrOption')}</option>
                     </select>
                   </div>
+                  {flag.flag_type === 'MULTIVARIATE' ? (
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="rollout_variant"
+                        className="text-muted-foreground"
+                      >
+                        {t('rolloutVariantLabel')}
+                      </Label>
+                      <select
+                        id="rollout_variant"
+                        className="w-full p-2 border border-border rounded-md bg-muted text-foreground"
+                        value={newRule.rollout_variant}
+                        onChange={(e) =>
+                          setNewRule({
+                            ...newRule,
+                            rollout_variant: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">
+                          {t('rolloutVariantNoneOption')}
+                        </option>
+                        {flag.variants.map((variant) => (
+                          <option key={variant.id} value={variant.id}>
+                            {variant.name}
+                          </option>
+                        ))}
+                      </select>
+                      {newRule.rollout_variant ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label
+                              htmlFor="rollout_percentage"
+                              className="text-muted-foreground"
+                            >
+                              {t('rolloutPercentageLabel')}
+                            </Label>
+                            <span className="font-mono text-sm text-foreground">
+                              {newRule.rollout_percentage}%
+                            </span>
+                          </div>
+                          <Slider
+                            id="rollout_percentage"
+                            min={0}
+                            max={100}
+                            value={[Number(newRule.rollout_percentage) || 0]}
+                            onValueChange={(value) =>
+                              setNewRule({
+                                ...newRule,
+                                rollout_percentage: String(
+                                  Array.isArray(value) ? value[0] : value,
+                                ),
+                              })
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground/70">
+                            {t('rolloutPercentageHint')}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <DialogFooter>
                   <Button
                     variant="outline"
-                    onClick={() => setIsRuleDialogOpen(false)}
+                    onClick={() => {
+                      setIsRuleDialogOpen(false);
+                      resetRuleForm();
+                    }}
                   >
                     {t('cancelButton')}
                   </Button>
-                  <Button onClick={handleCreateRule} disabled={isSaving}>
+                  <Button onClick={handleSaveRule} disabled={isSaving}>
                     {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
-                    {t('createButton')}
+                    {editingRule ? t('updateButton') : t('createButton')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -351,6 +542,112 @@ export default function RulesPage() {
           }
         />
       </div>
+
+      {flag.flag_type === 'MULTIVARIATE' ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-lg text-foreground">
+              {t('variantBreakdownTitle')}
+            </CardTitle>
+            {!isEditingVariants ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={startEditingVariants}
+              >
+                {t('editVariantsButton')}
+              </Button>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            {isEditingVariants ? (
+              <div className="space-y-3">
+                {variantDrafts.map((row, index) => (
+                  <div key={row.id} className="flex items-center gap-2">
+                    <Input
+                      value={row.name}
+                      onChange={(e) =>
+                        updateVariantDraft(index, { name: e.target.value })
+                      }
+                    />
+                    <Input
+                      type="number"
+                      value={row.percentage_allocation}
+                      onChange={(e) =>
+                        updateVariantDraft(index, {
+                          percentage_allocation: e.target.value,
+                        })
+                      }
+                      className="w-24"
+                    />
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <Switch
+                        checked={row.is_control}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            updateVariantDraft(index, { is_control: true });
+                          }
+                        }}
+                        aria-label={t('variantControlLabel')}
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {t('variantControlLabel')}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {variantDraftTotal !== 100 ? (
+                  <p className="text-xs text-destructive">
+                    {t('variantPercentageMismatchWarning', {
+                      total: variantDraftTotal,
+                    })}
+                  </p>
+                ) : null}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingVariants(false)}
+                  >
+                    {t('cancelButton')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSaveVariants}
+                    disabled={isSavingVariants || !isVariantEditValid}
+                  >
+                    {isSavingVariants ? (
+                      <Spinner size="sm" className="mr-2" />
+                    ) : null}
+                    {t('saveVariantsButton')}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {flag.variants.map((variant) => (
+                  <li
+                    key={variant.id}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <span className="text-foreground">
+                      {variant.name}
+                      {variant.is_control ? (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {t('variantControlBadge')}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="font-mono text-muted-foreground">
+                      {variant.percentage_allocation}%
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {rules.length === 0 ? (
         <Card>
@@ -384,6 +681,17 @@ export default function RulesPage() {
                   >
                     <Plus className="mr-1 h-4 w-4" />
                     {t('addConditionButton')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEditRule(rule)}
+                    className="text-muted-foreground"
+                    aria-label={t('editRuleAriaLabel', {
+                      priority: rule.priority,
+                    })}
+                  >
+                    <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"

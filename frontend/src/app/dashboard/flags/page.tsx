@@ -1,6 +1,6 @@
 'use client';
 
-import { Lock, MoreHorizontal, Plus } from 'lucide-react';
+import { Info, Lock, MoreHorizontal, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -44,11 +44,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   type Environment,
   environmentsApi,
   type FeatureFlag,
   flagsApi,
   overridesApi,
+  variantsApi,
 } from '@/lib/api';
 import { useTenant } from '@/lib/tenant-context';
 import { useToast } from '@/lib/toast-context';
@@ -71,7 +77,77 @@ export default function FlagsPage() {
     key: '',
     name: '',
     description: '',
+    flag_type: 'BOOLEAN' as 'BOOLEAN' | 'MULTIVARIATE',
   });
+  const makeVariantRow = (
+    overrides: Partial<{
+      name: string;
+      percentage_allocation: string;
+      is_control: boolean;
+    }> = {},
+  ) => ({
+    id: crypto.randomUUID(),
+    name: '',
+    percentage_allocation: '',
+    is_control: false,
+    ...overrides,
+  });
+
+  const [variantRows, setVariantRows] = useState<
+    {
+      id: string;
+      name: string;
+      percentage_allocation: string;
+      is_control: boolean;
+    }[]
+  >(() => [makeVariantRow({ is_control: true }), makeVariantRow()]);
+
+  const resetFlagForm = () => {
+    setNewFlag({
+      environment: '',
+      key: '',
+      name: '',
+      description: '',
+      flag_type: 'BOOLEAN',
+    });
+    setVariantRows([makeVariantRow({ is_control: true }), makeVariantRow()]);
+  };
+
+  const variantPercentageTotal = variantRows.reduce(
+    (sum, row) => sum + (Number(row.percentage_allocation) || 0),
+    0,
+  );
+
+  const addVariantRow = () => {
+    setVariantRows((rows) => [...rows, makeVariantRow()]);
+  };
+
+  const removeVariantRow = (index: number) => {
+    setVariantRows((rows) => {
+      const next = rows.filter((_, i) => i !== index);
+      if (next.length > 0 && !next.some((row) => row.is_control)) {
+        next[0].is_control = true;
+      }
+      return next;
+    });
+  };
+
+  const updateVariantRow = (
+    index: number,
+    patch: Partial<{
+      name: string;
+      percentage_allocation: string;
+      is_control: boolean;
+    }>,
+  ) => {
+    setVariantRows((rows) =>
+      rows.map((row, i) => {
+        if (i === index) return { ...row, ...patch };
+        if (patch.is_control) return { ...row, is_control: false };
+        return row;
+      }),
+    );
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -92,12 +168,40 @@ export default function FlagsPage() {
     loadData();
   }, [loadData]);
 
+  const isMultivariateFormValid =
+    newFlag.flag_type !== 'MULTIVARIATE' ||
+    (variantPercentageTotal === 100 &&
+      variantRows.every((row) => row.name.trim() !== ''));
+
   const handleCreate = async () => {
+    // Variants belong to the flag, but they're a separate API call after
+    // `flagsApi.create` succeeds. Validating here, before that call, means an
+    // invalid variant split never creates an orphaned flag that then blocks
+    // retrying with the same key.
+    if (!isMultivariateFormValid) {
+      showError(
+        t('variantPercentageMismatchWarning', {
+          total: variantPercentageTotal,
+        }),
+      );
+      return;
+    }
+
     setIsSaving(true);
     try {
-      await flagsApi.create(newFlag);
+      const createdFlag = await flagsApi.create(newFlag);
+      if (newFlag.flag_type === 'MULTIVARIATE') {
+        await variantsApi.bulkCreate(
+          createdFlag.id,
+          variantRows.map((row) => ({
+            name: row.name,
+            percentage_allocation: Number(row.percentage_allocation) || 0,
+            is_control: row.is_control,
+          })),
+        );
+      }
       setIsDialogOpen(false);
-      setNewFlag({ environment: '', key: '', name: '', description: '' });
+      resetFlagForm();
       loadData();
       success(t('createSuccessToast'));
     } catch (err) {
@@ -114,6 +218,7 @@ export default function FlagsPage() {
       key: flag.key,
       name: flag.name,
       description: flag.description || '',
+      flag_type: flag.flag_type,
     });
     setIsDialogOpen(true);
   };
@@ -129,7 +234,7 @@ export default function FlagsPage() {
       });
       setIsDialogOpen(false);
       setEditingFlag(null);
-      setNewFlag({ environment: '', key: '', name: '', description: '' });
+      resetFlagForm();
       loadData();
       success(t('updateSuccessToast'));
     } catch (err) {
@@ -226,12 +331,7 @@ export default function FlagsPage() {
               setIsDialogOpen(open);
               if (!open) {
                 setEditingFlag(null);
-                setNewFlag({
-                  environment: '',
-                  key: '',
-                  name: '',
-                  description: '',
-                });
+                resetFlagForm();
               }
             }}
           >
@@ -239,7 +339,7 @@ export default function FlagsPage() {
               <Plus className="mr-2 h-4 w-4" />
               {t('newFlagButton')}
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle className="text-foreground">
                   {editingFlag
@@ -320,6 +420,124 @@ export default function FlagsPage() {
                     }
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="flag_type" className="text-muted-foreground">
+                    {t('flagTypeLabel')}
+                  </Label>
+                  <select
+                    id="flag_type"
+                    className="w-full p-2 border border-border rounded-md bg-muted text-foreground"
+                    value={newFlag.flag_type}
+                    onChange={(e) =>
+                      setNewFlag({
+                        ...newFlag,
+                        flag_type: e.target.value as 'BOOLEAN' | 'MULTIVARIATE',
+                      })
+                    }
+                    disabled={!!editingFlag}
+                  >
+                    <option value="BOOLEAN">
+                      {t('flagTypeBooleanOption')}
+                    </option>
+                    <option value="MULTIVARIATE">
+                      {t('flagTypeMultivariateOption')}
+                    </option>
+                  </select>
+                </div>
+                {!editingFlag && newFlag.flag_type === 'MULTIVARIATE' ? (
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">
+                      {t('variantsSectionTitle')}
+                    </Label>
+                    <div className="space-y-2">
+                      {variantRows.map((row, index) => (
+                        <div key={row.id} className="flex items-center gap-2">
+                          <Input
+                            placeholder={t('variantNamePlaceholder')}
+                            value={row.name}
+                            onChange={(e) =>
+                              updateVariantRow(index, { name: e.target.value })
+                            }
+                          />
+                          <Input
+                            type="number"
+                            placeholder={t('variantPercentagePlaceholder')}
+                            value={row.percentage_allocation}
+                            onChange={(e) =>
+                              updateVariantRow(index, {
+                                percentage_allocation: e.target.value,
+                              })
+                            }
+                            className="w-24"
+                          />
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <Switch
+                              checked={row.is_control}
+                              onCheckedChange={(checked) => {
+                                // Exactly one control per flag: turning one
+                                // on turns every other row off, and turning
+                                // the active one off is a no-op -- there is
+                                // always exactly one, never zero.
+                                if (checked) {
+                                  updateVariantRow(index, { is_control: true });
+                                }
+                              }}
+                              aria-label={t('variantControlLabel')}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {t('variantControlLabel')}
+                            </span>
+                          </div>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-6 text-muted-foreground"
+                                  aria-label={t(
+                                    'variantControlTooltipAriaLabel',
+                                  )}
+                                />
+                              }
+                            >
+                              <Info className="size-3.5" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t('variantControlTooltip')}
+                            </TooltipContent>
+                          </Tooltip>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeVariantRow(index)}
+                            disabled={variantRows.length <= 1}
+                            aria-label={t('removeVariantAriaLabel')}
+                          >
+                            &times;
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addVariantRow}
+                    >
+                      {t('addVariantButton')}
+                    </Button>
+                    {variantPercentageTotal !== 100 ? (
+                      <p className="text-xs text-destructive">
+                        {t('variantPercentageMismatchWarning', {
+                          total: variantPercentageTotal,
+                        })}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               <DialogFooter>
                 <Button
@@ -327,19 +545,16 @@ export default function FlagsPage() {
                   onClick={() => {
                     setIsDialogOpen(false);
                     setEditingFlag(null);
-                    setNewFlag({
-                      environment: '',
-                      key: '',
-                      name: '',
-                      description: '',
-                    });
+                    resetFlagForm();
                   }}
                 >
                   {t('cancelButton')}
                 </Button>
                 <Button
                   onClick={editingFlag ? handleUpdate : handleCreate}
-                  disabled={isSaving}
+                  disabled={
+                    isSaving || (!editingFlag && !isMultivariateFormValid)
+                  }
                 >
                   {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
                   {editingFlag ? t('updateButton') : t('createButton')}
