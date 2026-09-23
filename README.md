@@ -3,12 +3,19 @@
   <img src="frontend/public/logo.png" alt="" width="76" />
 </p>
 
+<p align="center">
+  <a href="https://flagward.com"><strong>Website</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://docs.flagward.com"><strong>Documentation</strong></a>
+</p>
+
 # Flagward
 
 [![CI](https://github.com/basb7/flagward/actions/workflows/ci.yml/badge.svg)](https://github.com/basb7/flagward/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/)
 [![Django 6.1](https://img.shields.io/badge/django-6.1-092E20.svg)](https://www.djangoproject.com/)
+[![Docs](https://img.shields.io/badge/docs-docs.flagward.com-informational.svg)](https://docs.flagward.com)
 
 **Open-source feature flags with local SDK evaluation and real-time updates.**
 
@@ -29,8 +36,15 @@ client in real time over SSE.
 > **not** safe for a deployment. Read [SECURITY.md](SECURITY.md#deployment-hardening)
 > before exposing an instance.
 
+## Documentation
+
+The full documentation — guides, API reference, and SDK integration — lives at
+**[docs.flagward.com](https://docs.flagward.com)**. This README covers only the
+essentials to get Flagward running locally.
+
 ## Table of Contents
 
+- [Documentation](#documentation)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Docker Compose](#docker-compose)
