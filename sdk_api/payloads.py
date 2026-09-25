@@ -5,7 +5,9 @@ SDKs evaluate locally, so the payload has to carry the *effective* state of a
 flag, not its raw configuration. This module is the single place that projection
 happens — the flags endpoint and the SSE stream both use it so they cannot drift.
 """
-from core_flags.models import FeatureFlag, FlagOverride
+from django.db.models import Prefetch
+
+from core_flags.models import FeatureFlag, FlagOverride, Variant
 
 
 def active_overrides_by_flag(environment) -> dict:
@@ -66,8 +68,15 @@ def serialize_flag(flag: FeatureFlag, override: FlagOverride | None = None) -> d
             }
         )
 
+    # Same order `_assign_by_percentage` walks them in (`order_by("id")`), so
+    # an SDK replaying the cumulative split from this payload lands on the
+    # same variant the server would.
     variants_data = [
-        {"name": variant.name, "percentage_allocation": variant.percentage_allocation}
+        {
+            "name": variant.name,
+            "percentage_allocation": variant.percentage_allocation,
+            "is_control": variant.is_control,
+        }
         for variant in flag.variants.all()
     ]
 
@@ -86,6 +95,9 @@ def serialize_environment_flags(environment) -> list[dict]:
     """Every flag in an environment, projected onto the SDK wire format."""
     overrides = active_overrides_by_flag(environment)
     flags = FeatureFlag.objects.filter(environment=environment).prefetch_related(
-        "rules", "rules__conditions", "rules__rollout_variant", "variants"
+        "rules",
+        "rules__conditions",
+        "rules__rollout_variant",
+        Prefetch("variants", queryset=Variant.objects.order_by("id")),
     )
     return [serialize_flag(flag, overrides.get(flag.id)) for flag in flags]

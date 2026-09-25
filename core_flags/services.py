@@ -47,7 +47,7 @@ class FlagEvaluationService:
             return True
 
         for rule in rules:
-            result = self._evaluate_rule(rule, context)
+            result = self._evaluate_rule(rule, context, flag.key)
             if result:
                 return True
 
@@ -64,7 +64,7 @@ class FlagEvaluationService:
         percentage split.
         """
         for rule in rules:
-            if not self._evaluate_rule(rule, context):
+            if not self._evaluate_rule(rule, context, flag.key):
                 continue
 
             if rule.rollout_variant is None:
@@ -80,16 +80,21 @@ class FlagEvaluationService:
             if user_key is None:
                 return flag.variants.get(is_control=True).name
 
-            if self._hash_bucket(user_key, flag.id) < rule.rollout_percentage:
+            if self._hash_bucket(user_key, flag.key) < rule.rollout_percentage:
                 return rule.rollout_variant.name
 
             break
 
         return self._assign_by_percentage(flag, context)
 
-    def _hash_bucket(self, user_key: str, flag_id) -> float:
-        """Hash a user key + flag id into a deterministic float in [0, 100)."""
-        digest = hashlib.md5(f"{user_key}:{flag_id}".encode()).hexdigest()
+    def _hash_bucket(self, user_key: str, flag_key: str) -> float:
+        """Hash a user key + flag key into a deterministic float in [0, 100).
+
+        Salted by `flag.key`, not `flag.id`: the key is what the SDK wire
+        payload carries, so this is the one formula both the backend and the
+        SDKs can reproduce from the same inputs.
+        """
+        digest = hashlib.md5(f"{user_key}:{flag_key}".encode()).hexdigest()
         return int(digest[:8], 16) % 10000 / 100.0
 
     def _assign_by_percentage(self, flag: FeatureFlag, context: dict[str, Any]) -> str:
@@ -100,7 +105,7 @@ class FlagEvaluationService:
         if user_key is None:
             return flag.variants.get(is_control=True).name
 
-        bucket_value = self._hash_bucket(user_key, flag.id)
+        bucket_value = self._hash_bucket(user_key, flag.key)
 
         cumulative = 0.0
         for variant in variants:
@@ -110,13 +115,18 @@ class FlagEvaluationService:
 
         return variants.last().name
 
-    def _evaluate_rule(self, rule: StrategyRule, context: dict[str, Any]) -> bool:
+    def _evaluate_rule(
+        self, rule: StrategyRule, context: dict[str, Any], flag_key: str
+    ) -> bool:
         """
         Evaluate a strategy rule with the given context.
 
         Args:
             rule: The strategy rule to evaluate
             context: Dictionary of attributes to evaluate against
+            flag_key: The owning flag's key, passed down from the caller
+                (which already holds the flag) rather than read off
+                `rule.flag` -- that would be an extra query per rule.
 
         Returns:
             Boolean result based on operator logic
@@ -128,12 +138,12 @@ class FlagEvaluationService:
 
         if rule.operator_logic == "AND":
             return all(
-                self._evaluate_condition(c, context, salt=rule.flag_id)
+                self._evaluate_condition(c, context, salt=flag_key)
                 for c in conditions
             )
         else:  # OR
             return any(
-                self._evaluate_condition(c, context, salt=rule.flag_id)
+                self._evaluate_condition(c, context, salt=flag_key)
                 for c in conditions
             )
 
@@ -147,7 +157,7 @@ class FlagEvaluationService:
             condition: The condition to evaluate
             context: Dictionary of attributes to evaluate against
             salt: Stable per-flag salt for the PERCENTAGE_SPLIT hash
-                (the rule's `flag_id` — no extra query needed)
+                (the owning flag's `key` — no extra query needed)
 
         Returns:
             Boolean result based on operator

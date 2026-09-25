@@ -72,9 +72,35 @@ class TestSDKFlagsPayloadVariants:
         payload = self.flags_payload()
 
         assert sorted(payload["variants"], key=lambda v: v["name"]) == [
-            {"name": "control", "percentage_allocation": 50},
-            {"name": "treatment_a", "percentage_allocation": 50},
+            {"name": "control", "percentage_allocation": 50, "is_control": True},
+            {"name": "treatment_a", "percentage_allocation": 50, "is_control": False},
         ]
+
+    def test_multivariate_flag_payload_variants_are_in_split_order(self):
+        """The SDK walks variants in the same order `_assign_by_percentage`
+        does (`order_by("id")`), so it can reproduce the server's cumulative
+        split without re-deriving an ordering of its own."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="checkout-variant",
+            name="Checkout Variant",
+            is_enabled=True,
+            flag_type=FlagType.MULTIVARIATE,
+        )
+        treatment = Variant.objects.create(
+            flag=flag, name="treatment_a", percentage_allocation=50
+        )
+        control = Variant.objects.create(
+            flag=flag, name="control", percentage_allocation=50, is_control=True
+        )
+
+        payload = self.flags_payload()
+
+        expected_order = [
+            v.name for v in flag.variants.order_by("id")
+        ]
+        assert [v["name"] for v in payload["variants"]] == expected_order
+        assert {treatment.name, control.name} == set(expected_order)
 
     def test_boolean_flag_payload_has_empty_variants(self):
         FeatureFlag.objects.create(

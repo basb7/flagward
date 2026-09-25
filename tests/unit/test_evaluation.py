@@ -419,13 +419,55 @@ class TestFlagEvaluationService:
         assert results == {"treatment"}
 
     def test_hash_bucket_is_the_same_regardless_of_which_flag_field_reads_it(self):
-        """`_hash_bucket` depends only on (user_key, flag_id) -- it has no
+        """`_hash_bucket` depends only on (user_key, flag_key) -- it has no
         notion of "which rule matched" or "which split is active", which is
         what lets a rule's rollout_percentage be raised over time without
         reshuffling a user's underlying bucket value."""
         first = self.service._hash_bucket("u-consistent", "flag-a")
         second = self.service._hash_bucket("u-consistent", "flag-a")
         assert first == second
+
+    def test_hash_bucket_pinned_cross_language_vectors(self):
+        """These exact values are the contract the TS SDK also pins (see
+        odd/tasks/sdk-multivariate-evaluation.md): both repos must agree on
+        `_hash_bucket`/`hashBucket` byte-for-byte, since the SDKs evaluate the
+        wire payload locally instead of asking the backend."""
+        vectors = [
+            ("u-1", "checkout-flow", 77.92),
+            ("user-0", "checkout-flow", 77.41),
+            ("user-1", "checkout-flow", 9.36),
+            ("pro-user-0", "new-pricing", 55.17),
+            ("ñandú-42", "new-pricing", 70.25),
+            ("", "checkout-flow", 78.23),
+            ("12345", "dark-mode", 35.83),
+        ]
+        for user_id, flag_key, expected in vectors:
+            assert self.service._hash_bucket(user_id, flag_key) == expected
+
+    def test_hash_bucket_salt_is_the_flag_key_not_the_flag_id(self):
+        """Two flags that share a key in different environments (or a flag
+        re-created with a new id) must bucket users identically -- the salt
+        is the flag's `key`, never its database id."""
+        flag_a = FeatureFlag.objects.create(
+            environment=self.env,
+            key="checkout-flow",
+            name="Checkout Flow A",
+            is_enabled=True,
+        )
+        other_env = Environment.objects.create(
+            name="Staging", key="staging", project=self.env.project
+        )
+        flag_b = FeatureFlag.objects.create(
+            environment=other_env,
+            key="checkout-flow",
+            name="Checkout Flow B",
+            is_enabled=True,
+        )
+        assert flag_a.id != flag_b.id
+        for user_id in ("u-1", "user-0", "user-1"):
+            assert self.service._hash_bucket(
+                user_id, flag_a.key
+            ) == self.service._hash_bucket(user_id, flag_b.key)
 
     def test_raising_a_rules_rollout_percentage_only_ever_adds_users_never_removes(self):
         """Widening a rule's rollout_percentage keeps every user who was
@@ -649,7 +691,7 @@ class TestPercentageSplitCondition:
         flag = self._boolean_flag_with_split_rule(60)
         for i in range(20):
             user_id = f"pro-user-{i}"
-            bucket = self.service._hash_bucket(user_id, flag.id)
+            bucket = self.service._hash_bucket(user_id, flag.key)
             result = self.service.evaluate_flag(
                 flag, {"user_id": user_id, "plan": "pro"}
             )
@@ -661,7 +703,7 @@ class TestPercentageSplitCondition:
         outside = [
             f"pro-user-{i}"
             for i in range(50)
-            if not self.service._hash_bucket(f"pro-user-{i}", flag.id) < 60
+            if not self.service._hash_bucket(f"pro-user-{i}", flag.key) < 60
         ]
         assert outside, "expected at least one user outside the split"
         for user_id in outside:
@@ -747,7 +789,7 @@ class TestPercentageSplitCondition:
         inside = [
             f"pro-user-{i}"
             for i in range(50)
-            if self.service._hash_bucket(f"pro-user-{i}", flag.id) < 60
+            if self.service._hash_bucket(f"pro-user-{i}", flag.key) < 60
         ]
         assert inside, "expected at least one user inside the split"
         for user_id in inside:
