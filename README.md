@@ -3,12 +3,19 @@
   <img src="frontend/public/logo.png" alt="" width="76" />
 </p>
 
+<p align="center">
+  <a href="https://flagward.com"><strong>Website</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://docs.flagward.com"><strong>Documentation</strong></a>
+</p>
+
 # Flagward
 
 [![CI](https://github.com/basb7/flagward/actions/workflows/ci.yml/badge.svg)](https://github.com/basb7/flagward/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/)
 [![Django 6.1](https://img.shields.io/badge/django-6.1-092E20.svg)](https://www.djangoproject.com/)
+[![Docs](https://img.shields.io/badge/docs-docs.flagward.com-informational.svg)](https://docs.flagward.com)
 
 **Open-source feature flags with local SDK evaluation and real-time updates.**
 
@@ -29,6 +36,32 @@ client in real time over SSE.
 > Flagward ships with development defaults so it runs out of the box. They are
 > **not** safe for a deployment. Read [SECURITY.md](SECURITY.md#deployment-hardening)
 > before exposing an instance.
+
+## Documentation
+
+The full documentation — guides, API reference, and SDK integration — lives at
+**[docs.flagward.com](https://docs.flagward.com)**. This README covers only the
+essentials to get Flagward running locally.
+
+## Table of Contents
+
+- [Documentation](#documentation)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Docker Compose](#docker-compose)
+- [Creating Your First Flag](#creating-your-first-flag)
+- [Consuming flags from your app](#consuming-flags-from-your-app)
+- [Project Structure](#project-structure)
+- [API Endpoints](#api-endpoints)
+- [Flag Evaluation](#flag-evaluation)
+- [Known Limitations](#known-limitations)
+- [Models](#models)
+- [Environment Variables](#environment-variables)
+- [Development](#development)
+- [Contributing](#contributing)
+- [Security](#security)
+- [Built with Gentle-AI](#built-with-gentle-ai)
+- [License](#license)
 
 ## Architecture
 
@@ -1268,6 +1301,12 @@ through [GitHub Security Advisories](https://github.com/basb7/flagward/security/
 
 Before deploying, read the [deployment hardening](SECURITY.md#deployment-hardening)
 table — the shipped defaults are for local development only.
+
+## Built with Gentle-AI
+
+<a href="https://github.com/Gentleman-Programming/gentle-ai">
+  <img width="220" src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png" alt="Built with Gentle-AI" />
+</a>
 
 ## License
 
