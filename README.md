@@ -21,7 +21,8 @@ client in real time over SSE.
 - **Real-time propagation** — flag changes stream to connected SDKs via SSE
 - **Kill switch overrides** — force a flag on or off during an incident, with an
   audit trail
-- **Targeting rules** — boolean and multivariate flags with percentage rollouts
+- **Targeting rules** — boolean and multivariate flags, per-rule percentage
+  rollouts, and a deterministic `PERCENTAGE_SPLIT` condition
 - **Self-hostable** — one `docker compose up` away
 
 > [!IMPORTANT]
@@ -335,7 +336,12 @@ In production, use the web dashboard at http://localhost:3000:
    - Attribute: country
    - Operator: Equals
    - Value: US
-9. **Watch it work**: Monitoring shows which SDKs are connected
+9. **Multivariate instead** (optional): pick type Multivariate when creating
+   the flag, then add variants with a weight each (they must sum to 100). One
+   of them is the control: what a user without a `user_id` gets. A rule can
+   send a percentage of its segment to one variant; the rest falls through to
+   the flag's weights. See [Multivariate flags](#multivariate-flags).
+10. **Watch it work**: Monitoring shows which SDKs are connected
 
    It will not show evaluations from a client evaluating locally, which is
    what the JavaScript SDKs do -- those never reach the server. Only calls to
@@ -410,7 +416,8 @@ account like everybody else.
          └── 3. ENVIRONMENT     # key derived too; carries the API key
                                 # SDKs authenticate with
                └── 4. FEATURE FLAG          # is_enabled = the configured state
-                     └── 5. STRATEGY RULES (optional)   # who gets it
+                     ├── VARIANTS (multivariate only) # name + weight, one control
+                     └── 5. STRATEGY RULES (optional)   # who gets it, and which variant
                            └── 6. CONDITIONS (optional) # attribute + operator + value
 
    FLAG OVERRIDE                # not part of setup: an incident tool.
@@ -674,6 +681,39 @@ start.
 Source: [basb7/flagward-sdk-js](https://github.com/basb7/flagward-sdk-js) —
 one repository holding the shared core and one thin adapter per framework.
 
+### Multivariate flags
+
+A multivariate flag answers "which version", not "on or off". Every adapter
+has `useVariant` next to `useFlag`, and the core has `client.getVariant`:
+
+```tsx
+import { FlagwardProvider, useVariant } from "@flagward/react";
+
+<FlagwardProvider apiKey="your-environment-api-key" context={{ user_id: user.id, plan: user.plan }}>
+  <Checkout />
+</FlagwardProvider>
+
+function Checkout() {
+  const { value: variant, isLoading } = useVariant("checkout-flow");
+
+  if (isLoading) return <LegacyCheckout />;
+  if (variant === "one-page") return <OnePageCheckout />;
+  if (variant === "multi-step") return <MultiStepCheckout />;
+  return <LegacyCheckout />; // control, or a flag this environment does not have
+}
+```
+
+- **Put `user_id` in the context.** The variant is a deterministic bucket of
+  `user_id` and the flag key, so the same user always sees the same variant.
+  Without one, every user gets the control variant.
+- `value` is `undefined` while loading, for an unknown key, and for a disabled,
+  overridden or boolean flag — always render a fallback.
+- `useFlag` on a multivariate flag still returns a boolean: `true` when it is on.
+
+Needs `@flagward/core` 0.3.0 or later (react 0.4.0, vue 0.3.0, solid 0.2.0,
+svelte 0.2.0). Each package README covers its framework in more depth: A/B/n,
+variant as configuration, per-call context, loading.
+
 ### Two ways to evaluate, and why it matters
 
 **Locally, which is what the JavaScript SDKs do.** They download the flags and
@@ -807,13 +847,16 @@ grant that member held inside it.
 | `POST` | `/api/v1/environments/{id}/rotate_api_key/` | Issue a fresh API key for it |
 | `GET` `POST` | `/api/v1/flags/` | Feature flags |
 | `GET` `PATCH` `DELETE` | `/api/v1/flags/{id}/` | One flag |
+| `POST` `PUT` | `/api/v1/flags/{id}/variants/` | A multivariate flag's whole variant set, atomically: `POST` creates the first set, `PUT` replaces it (rows without `id` are created, omitted ids deleted) |
+| `GET` `POST` | `/api/v1/variants/` | Variants, one row at a time |
+| `GET` `PATCH` `DELETE` | `/api/v1/variants/{id}/` | One variant (the control and the last one cannot be deleted) |
 | `GET` `POST` | `/api/v1/rules/` | Strategy rules |
 | `GET` `PATCH` `DELETE` | `/api/v1/rules/{id}/` | One rule |
 | `GET` `POST` | `/api/v1/conditions/` | Conditions |
 | `GET` `PATCH` `DELETE` | `/api/v1/conditions/{id}/` | One condition |
 
 Filters: `/environments/?project=`, `/flags/?environment=&project=&is_enabled=&flag_type=`,
-`/rules/?flag=`, `/conditions/?rule=`. A malformed filter value returns `400`,
+`/variants/?flag=`, `/rules/?flag=`, `/conditions/?rule=`. A malformed filter value returns `400`,
 never an empty page.
 
 The flag payload distinguishes configuration from what is actually served:
@@ -941,12 +984,38 @@ curl -N -H "X-API-Key: <api_key>" http://localhost:8000/api/v1/sdk/stream/
       "name": "Checkout",
       "is_enabled": false,   // already effective: override applied if any
       "flag_type": "BOOLEAN",
+      "variants": [],        // stripped to [] while an override is active
       "rules": [],           // stripped to [] while an override is active
       "overridden": true     // informational: this value is being forced
+    },
+    {
+      "key": "checkout-flow",
+      "name": "Checkout flow",
+      "is_enabled": true,
+      "flag_type": "MULTIVARIATE",
+      "variants": [          // in the order the split walks them
+        { "name": "legacy",   "percentage_allocation": 50, "is_control": true },
+        { "name": "one-page", "percentage_allocation": 50, "is_control": false }
+      ],
+      "rules": [
+        {
+          "priority": 1,
+          "operator_logic": "AND",
+          "rollout_variant": "one-page", // null: the rule only selects the segment
+          "rollout_percentage": 40,      // null behaves like 100
+          "conditions": [
+            { "attribute": "plan", "operator": "EQUALS", "value": { "type": "string", "value": "pro" } }
+          ]
+        }
+      ],
+      "overridden": false
     }
   ]
 }
 ```
+
+Condition values arrive wrapped (`{"type": ..., "value": ...}`); the
+comparison uses the inner `value`.
 
 `is_enabled` is the **effective** value, so a client never needs to know about
 overrides to be correct. When one is active the rules are stripped, which makes
@@ -956,10 +1025,29 @@ value *is* the answer.
 Local evaluation an SDK must implement:
 
 ```
-if not is_enabled:        -> false
-if rules is empty:        -> true
-otherwise:                -> true if any rule matches the context
+BOOLEAN
+  if not is_enabled:        -> false
+  if rules is empty:        -> true
+  otherwise:                -> true if any rule matches the context
+
+MULTIVARIATE (the variant)
+  bucket = int(md5(f"{user_id}:{flag_key}").hexdigest()[:8], 16) % 10000 / 100   # [0, 100)
+  first matching rule, by priority, and only that one:
+    no rollout_variant                        -> the flag's split
+    rollout_percentage is null or >= 100      -> rollout_variant
+    no user_id                                -> the control variant
+    bucket < rollout_percentage               -> rollout_variant
+    otherwise                                 -> the flag's split (not the control)
+  the flag's split:
+    no user_id                                -> the control variant
+    otherwise: walk variants in payload order, adding weights;
+               the first whose running total exceeds bucket wins
 ```
+
+`PERCENTAGE_SPLIT` conditions use the same bucket: they match when
+`bucket < value`, ignore the attribute, and never match without a `user_id`.
+Because a user's bucket never changes, raising a percentage only ever adds
+users. `@flagward/core` pins the same test vectors as `tests/unit/test_evaluation.py`.
 
 `/sdk/flags/` and `/sdk/stream/` share one projection (`sdk_api/payloads.py`), so
 the stream cannot drift from the polling endpoint. Lifting an override is a flag
@@ -980,9 +1068,14 @@ result = service.evaluate_flag(flag, {"country": "US", "plan": "premium"})
 ### Multivariate Flags
 
 ```python
-# Returns variant name (e.g., "control", "variant_a", "variant_b")
-result = service.evaluate_flag(multivariate_flag, context)
+# Returns the variant name, e.g. "legacy" or "one-page"
+result = service.evaluate_flag(multivariate_flag, {"user_id": "u-1", "plan": "pro"})
 ```
+
+The variant is chosen deterministically from `user_id` (see the algorithm
+under [the flag payload](#the-flag-payload-an-sdk-evaluates-locally)); with no
+`user_id` it is the control variant. An active override still returns a
+boolean, even for a multivariate flag.
 
 ### Evaluation Logic
 
@@ -991,12 +1084,15 @@ Order of precedence in `FlagEvaluationService.evaluate_flag`:
 1. **Active override** — wins over everything and bypasses the rules. A forced
    value has nothing left to evaluate.
 2. **`is_enabled`** — a disabled flag is `false`, whatever its rules say.
-3. **Rules** — no rules means `true`; otherwise any matching rule wins.
+3. **Rules** — boolean: no rules means `true`; otherwise any matching rule
+   wins. Multivariate: the first matching rule may send part of its segment to
+   one variant; everyone else goes through the flag's weights.
 
 - **AND logic**: All conditions must match
 - **OR logic**: Any condition can match
 - **Priority ordering**: Rules evaluated by priority (lower = higher priority)
-- **Operators**: EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, IN_LIST, CONTAINS
+- **Operators**: EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, IN_LIST, CONTAINS,
+  PERCENTAGE_SPLIT
 
 ### Configuration vs. intervention
 
@@ -1027,8 +1123,9 @@ the SDKs are serving.
   retention policy and `timestamp` has no index, so the analytics queries
   (`timestamp__gte`) table-scan. Add an index and a purge/retention strategy
   before running this under real traffic.
-- **Multivariate flags are not implemented.** `FlagType.MULTIVARIATE` exists on
-  the model, but `FlagEvaluationService` only ever returns a boolean.
+- **Multivariate flags have no experiment analysis.** Variants are assigned and
+  `/sdk/evaluate/` logs which one was served, but there are no conversion
+  events or results view, so an A/B test's winner has to be measured elsewhere.
 - **No settings page.** SDK/API keys are read from the Environments page.
 - **Some tenancy actions exist only in the API.** Rotating an environment's API
   key (`POST /environments/{id}/rotate_api_key/`), editing an environment, and
@@ -1051,12 +1148,13 @@ the SDKs are serving.
 | **EnvironmentMembership** | The same four roles, on one environment |
 | **Invitation** | Single-use link into an organization; only the token's SHA-256 is stored |
 | **Environment** | Deployment target (production, staging, dev) inside a project; `key` unique per project |
-| **FeatureFlag** | Toggle for a feature (enabled/disabled) |
-| **StrategyRule** | Group of conditions for a flag |
+| **FeatureFlag** | Toggle for a feature (enabled/disabled); `BOOLEAN` or `MULTIVARIATE` |
+| **Variant** | One version of a multivariate flag: name, weight (`percentage_allocation`), `is_control` |
+| **StrategyRule** | Group of conditions for a flag; optionally a `rollout_variant` and `rollout_percentage` |
 | **Condition** | Single rule (attribute + operator + value) |
 | **FlagOverride** | Kill switch. Forces a flag's value while active; `lift()` stamps `cleared_at` and restores the configured state. Never deleted. |
 | **SDKRegistration** | Tracks connected SDK instances (type, version, `last_seen_at`) |
-| **EvaluationLog** | One row per flag per evaluation call, for analytics |
+| **EvaluationLog** | One row per flag per evaluation call, for analytics; `result` is `"true"`/`"false"` or the variant name |
 
 ## Environment Variables
 
