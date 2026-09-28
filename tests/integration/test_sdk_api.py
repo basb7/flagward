@@ -7,8 +7,11 @@ from rest_framework.test import APIClient
 from core_flags.models import (
     Environment,
     FeatureFlag,
+    FlagType,
+    StrategyRule,
+    Variant,
 )
-from sdk_api.models import SDKRegistration
+from sdk_api.models import EvaluationLog, SDKRegistration
 
 
 @pytest.mark.django_db
@@ -41,6 +44,104 @@ class TestSDKFlagsEndpoint:
 
 
 @pytest.mark.django_db
+class TestSDKFlagsPayloadVariants:
+    """Tests that the SDK flags payload carries variants for local evaluation."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
+        self.client = APIClient()
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
+
+    def flags_payload(self):
+        response = self.client.get("/api/v1/sdk/flags/", HTTP_X_API_KEY=self.env.api_key)
+        return response.json()["flags"][0]
+
+    def test_multivariate_flag_payload_includes_variants(self):
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="checkout-variant",
+            name="Checkout Variant",
+            is_enabled=True,
+            flag_type=FlagType.MULTIVARIATE,
+        )
+        Variant.objects.create(
+            flag=flag, name="control", percentage_allocation=50, is_control=True
+        )
+        Variant.objects.create(flag=flag, name="treatment_a", percentage_allocation=50)
+
+        payload = self.flags_payload()
+
+        assert sorted(payload["variants"], key=lambda v: v["name"]) == [
+            {"name": "control", "percentage_allocation": 50, "is_control": True},
+            {"name": "treatment_a", "percentage_allocation": 50, "is_control": False},
+        ]
+
+    def test_multivariate_flag_payload_variants_are_in_split_order(self):
+        """The SDK walks variants in the same order `_assign_by_percentage`
+        does (`order_by("id")`), so it can reproduce the server's cumulative
+        split without re-deriving an ordering of its own."""
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="checkout-variant",
+            name="Checkout Variant",
+            is_enabled=True,
+            flag_type=FlagType.MULTIVARIATE,
+        )
+        treatment = Variant.objects.create(
+            flag=flag, name="treatment_a", percentage_allocation=50
+        )
+        control = Variant.objects.create(
+            flag=flag, name="control", percentage_allocation=50, is_control=True
+        )
+
+        payload = self.flags_payload()
+
+        expected_order = [
+            v.name for v in flag.variants.order_by("id")
+        ]
+        assert [v["name"] for v in payload["variants"]] == expected_order
+        assert {treatment.name, control.name} == set(expected_order)
+
+    def test_boolean_flag_payload_has_empty_variants(self):
+        FeatureFlag.objects.create(
+            environment=self.env, key="boolean-flag", name="Boolean Flag", is_enabled=True
+        )
+
+        payload = self.flags_payload()
+
+        assert payload["variants"] == []
+
+    def test_rule_payload_includes_rollout_variant_and_percentage(self):
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="checkout-variant",
+            name="Checkout Variant",
+            is_enabled=True,
+            flag_type=FlagType.MULTIVARIATE,
+        )
+        variant = Variant.objects.create(
+            flag=flag, name="treatment_a", percentage_allocation=100, is_control=True
+        )
+        StrategyRule.objects.create(flag=flag, rollout_variant=variant, rollout_percentage=10)
+
+        payload = self.flags_payload()
+
+        assert payload["rules"][0]["rollout_variant"] == "treatment_a"
+        assert payload["rules"][0]["rollout_percentage"] == 10
+
+    def test_rule_payload_rollout_fields_are_none_when_unset(self):
+        flag = FeatureFlag.objects.create(
+            environment=self.env, key="boolean-flag", name="Boolean Flag", is_enabled=True
+        )
+        StrategyRule.objects.create(flag=flag)
+
+        payload = self.flags_payload()
+
+        assert payload["rules"][0]["rollout_variant"] is None
+        assert payload["rules"][0]["rollout_percentage"] is None
+
+
+@pytest.mark.django_db
 class TestSDKEvaluateEndpoint:
     """Tests for POST /api/v1/sdk/evaluate/ endpoint."""
 
@@ -67,6 +168,63 @@ class TestSDKEvaluateEndpoint:
         # TODO: Implement API key authentication
         # For now, this test documents the expected behavior
         pass
+
+
+@pytest.mark.django_db
+class TestSDKEvaluateLogsResultType:
+    """Tests that EvaluationLog.result stores the true result, not a bool() coercion."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, project):
+        self.client = APIClient()
+        self.env = Environment.objects.create(name="Prod", key="prod", project=project)
+
+    def evaluate(self, context=None):
+        return self.client.post(
+            "/api/v1/sdk/evaluate/",
+            {"context": context or {}},
+            format="json",
+            HTTP_X_API_KEY=self.env.api_key,
+        )
+
+    def test_boolean_flag_true_logs_the_string_true(self):
+        FeatureFlag.objects.create(
+            environment=self.env, key="on-flag", name="On Flag", is_enabled=True
+        )
+
+        self.evaluate()
+
+        log = EvaluationLog.objects.get()
+        assert log.result == "true"
+
+    def test_boolean_flag_false_logs_the_string_false(self):
+        FeatureFlag.objects.create(
+            environment=self.env, key="off-flag", name="Off Flag", is_enabled=False
+        )
+
+        self.evaluate()
+
+        log = EvaluationLog.objects.get()
+        assert log.result == "false"
+
+    def test_multivariate_flag_logs_the_variant_name(self):
+        flag = FeatureFlag.objects.create(
+            environment=self.env,
+            key="checkout-variant",
+            name="Checkout Variant",
+            is_enabled=True,
+            flag_type=FlagType.MULTIVARIATE,
+        )
+        variant = Variant.objects.create(
+            flag=flag, name="treatment_a", percentage_allocation=100, is_control=True
+        )
+        rule = StrategyRule.objects.create(flag=flag, rollout_variant=variant, rollout_percentage=100)
+        del rule
+
+        self.evaluate(context={"user_id": "u-1"})
+
+        log = EvaluationLog.objects.get()
+        assert log.result == "treatment_a"
 
 
 @pytest.mark.django_db

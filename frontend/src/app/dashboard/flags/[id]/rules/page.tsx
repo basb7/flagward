@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Info, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -27,6 +27,7 @@ import { Label } from '@/components/ui/label';
 import { LoadingRegion } from '@/components/ui/loading-region';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
@@ -37,12 +38,18 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   type Condition,
   conditionsApi,
   type FeatureFlag,
   flagsApi,
   rulesApi,
   type StrategyRule,
+  variantsApi,
 } from '@/lib/api';
 import { useToast } from '@/lib/toast-context';
 
@@ -63,6 +70,7 @@ export default function RulesPage() {
     { value: 'LESS_THAN', label: t('operatorLessThan') },
     { value: 'IN_LIST', label: t('operatorInList') },
     { value: 'CONTAINS', label: t('operatorContains') },
+    { value: 'PERCENTAGE_SPLIT', label: t('operatorPercentageSplit') },
   ];
 
   const getOperatorLabel = (value: string) => {
@@ -75,6 +83,7 @@ export default function RulesPage() {
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
   const [isConditionDialogOpen, setIsConditionDialogOpen] = useState(false);
   const [selectedRule, setSelectedRule] = useState<StrategyRule | null>(null);
+  const [editingRule, setEditingRule] = useState<StrategyRule | null>(null);
   const [editingCondition, setEditingCondition] = useState<Condition | null>(
     null,
   );
@@ -82,12 +91,162 @@ export default function RulesPage() {
   const [newRule, setNewRule] = useState({
     priority: 1,
     operator_logic: 'AND' as 'AND' | 'OR',
+    rollout_variant: '',
+    rollout_percentage: '100',
   });
   const [newCondition, setNewCondition] = useState({
     attribute: '',
     operator: 'EQUALS',
     value: '',
   });
+  type VariantDraft = {
+    id: string;
+    name: string;
+    percentage_allocation: string;
+    is_control: boolean;
+  };
+
+  const [isEditingVariants, setIsEditingVariants] = useState(false);
+  const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([]);
+  const [originalVariantIds, setOriginalVariantIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [isSavingVariants, setIsSavingVariants] = useState(false);
+
+  const makeVariantDraft = (
+    overrides: Partial<{
+      name: string;
+      percentage_allocation: string;
+      is_control: boolean;
+    }> = {},
+  ): VariantDraft => ({
+    id: crypto.randomUUID(),
+    name: '',
+    percentage_allocation: '0',
+    is_control: false,
+    ...overrides,
+  });
+
+  const isVariantEditValid = variantDrafts.every(
+    (row) => row.name.trim() !== '',
+  );
+
+  // The control variant is never edited directly: its percentage is always
+  // `100 - sum(other variants)`, mirroring Flagsmith's variant editor.
+  const recalcControlPercentage = (rows: VariantDraft[]): VariantDraft[] => {
+    const controlIndex = rows.findIndex((row) => row.is_control);
+    if (controlIndex === -1) return rows;
+    const nonControlSum = rows.reduce(
+      (sum, row, i) =>
+        i === controlIndex
+          ? sum
+          : sum + (Number(row.percentage_allocation) || 0),
+      0,
+    );
+    const controlValue = Math.max(0, Math.min(100, 100 - nonControlSum));
+    return rows.map((row, i) =>
+      i === controlIndex
+        ? { ...row, percentage_allocation: String(controlValue) }
+        : row,
+    );
+  };
+
+  const getNonControlHeadroom = (rows: VariantDraft[], index: number) => {
+    const otherNonControlSum = rows.reduce((sum, row, i) => {
+      if (i === index || row.is_control) return sum;
+      return sum + (Number(row.percentage_allocation) || 0);
+    }, 0);
+    return Math.max(0, 100 - otherNonControlSum);
+  };
+
+  const startEditingVariants = () => {
+    if (!flag) return;
+    setOriginalVariantIds(new Set(flag.variants.map((variant) => variant.id)));
+    setVariantDrafts(
+      flag.variants.map((variant) => ({
+        id: variant.id,
+        name: variant.name,
+        percentage_allocation: String(variant.percentage_allocation),
+        is_control: variant.is_control,
+      })),
+    );
+    setIsEditingVariants(true);
+  };
+
+  const addVariantDraft = () => {
+    setVariantDrafts((rows) =>
+      recalcControlPercentage([...rows, makeVariantDraft()]),
+    );
+  };
+
+  const removeVariantDraft = (index: number) => {
+    setVariantDrafts((rows) => {
+      const next = rows.filter((_, i) => i !== index);
+      if (next.length > 0 && !next.some((row) => row.is_control)) {
+        next[0].is_control = true;
+      }
+      return recalcControlPercentage(next);
+    });
+  };
+
+  const updateVariantDraft = (
+    index: number,
+    patch: Partial<{
+      name: string;
+      percentage_allocation: string;
+      is_control: boolean;
+    }>,
+  ) => {
+    setVariantDrafts((rows) => {
+      const isControlRow = rows[index].is_control;
+      const nextPatch =
+        patch.percentage_allocation !== undefined && !isControlRow
+          ? {
+              ...patch,
+              percentage_allocation: String(
+                Math.max(
+                  0,
+                  Math.min(
+                    Number(patch.percentage_allocation) || 0,
+                    getNonControlHeadroom(rows, index),
+                  ),
+                ),
+              ),
+            }
+          : patch;
+      const next = rows.map((row, i) => {
+        if (i === index) return { ...row, ...nextPatch };
+        return row;
+      });
+      return recalcControlPercentage(next);
+    });
+  };
+
+  const handleSaveVariants = async () => {
+    if (!flag || !isVariantEditValid) return;
+
+    setIsSavingVariants(true);
+    try {
+      await variantsApi.replaceSet(
+        flag.id,
+        variantDrafts.map((row) => ({
+          ...(originalVariantIds.has(row.id) ? { id: row.id } : {}),
+          name: row.name,
+          percentage_allocation: Number(row.percentage_allocation) || 0,
+          is_control: row.is_control,
+        })),
+      );
+      setIsEditingVariants(false);
+      loadData();
+      success(t('updateVariantsSuccessToast'));
+    } catch (err) {
+      showError(
+        err instanceof Error ? err.message : t('updateVariantsErrorFallback'),
+      );
+    } finally {
+      setIsSavingVariants(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -108,21 +267,57 @@ export default function RulesPage() {
     loadData();
   }, [loadData]);
 
-  const handleCreateRule = async () => {
+  const resetRuleForm = () => {
+    setEditingRule(null);
+    setNewRule({
+      priority: 1,
+      operator_logic: 'AND',
+      rollout_variant: '',
+      rollout_percentage: '100',
+    });
+  };
+
+  const handleEditRule = (rule: StrategyRule) => {
+    setEditingRule(rule);
+    setNewRule({
+      priority: rule.priority,
+      operator_logic: rule.operator_logic,
+      rollout_variant: rule.rollout_variant ?? '',
+      rollout_percentage: String(rule.rollout_percentage ?? 100),
+    });
+    setIsRuleDialogOpen(true);
+  };
+
+  const handleSaveRule = async () => {
     setIsSaving(true);
     try {
-      await rulesApi.create({
-        flag: flagId,
+      const hasRollout =
+        flag?.flag_type === 'MULTIVARIATE' && newRule.rollout_variant !== '';
+      const payload = {
         priority: newRule.priority,
         operator_logic: newRule.operator_logic,
-      });
+        rollout_variant: hasRollout ? newRule.rollout_variant : null,
+        rollout_percentage: hasRollout
+          ? Number(newRule.rollout_percentage) || 0
+          : null,
+      };
+      if (editingRule) {
+        await rulesApi.update(editingRule.id, payload);
+        success(t('updateRuleSuccessToast'));
+      } else {
+        await rulesApi.create({ flag: flagId, ...payload });
+        success(t('createRuleSuccessToast'));
+      }
       setIsRuleDialogOpen(false);
-      setNewRule({ priority: 1, operator_logic: 'AND' });
+      resetRuleForm();
       loadData();
-      success(t('createRuleSuccessToast'));
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : t('createRuleErrorFallback'),
+        err instanceof Error
+          ? err.message
+          : editingRule
+            ? t('updateRuleErrorFallback')
+            : t('createRuleErrorFallback'),
       );
     } finally {
       setIsSaving(false);
@@ -153,6 +348,13 @@ export default function RulesPage() {
     let valueStr = '';
     if (Array.isArray(condition.value)) {
       valueStr = condition.value.join(', ');
+    } else if (
+      condition.operator === 'PERCENTAGE_SPLIT' &&
+      typeof condition.value === 'object' &&
+      condition.value !== null &&
+      'value' in condition.value
+    ) {
+      valueStr = String((condition.value as { value: unknown }).value ?? '');
     } else {
       valueStr = String(condition.value);
     }
@@ -170,15 +372,30 @@ export default function RulesPage() {
       let parsedValue: unknown = newCondition.value;
       if (newCondition.operator === 'IN_LIST') {
         parsedValue = newCondition.value.split(',').map((v) => v.trim());
+      } else if (newCondition.operator === 'PERCENTAGE_SPLIT') {
+        // Flagsmith-style % Split: the backend normalizes this into the
+        // wrapped `{"value": N}` shape and validates the 0-100 range.
+        // The attribute is meaningless here (the bucket comes from
+        // `user_id` alone), so an untouched field sends the convention.
+        parsedValue = { value: Number(newCondition.value) || 0 };
       } else if (
         ['GREATER_THAN', 'LESS_THAN'].includes(newCondition.operator)
       ) {
         parsedValue = Number(newCondition.value);
       }
 
+      // A % Split needs no trait: the bucket comes from `user_id` alone.
+      // An untouched attribute field sends that convention so the required
+      // model field is never blank.
+      const attribute =
+        newCondition.operator === 'PERCENTAGE_SPLIT' &&
+        newCondition.attribute.trim() === ''
+          ? 'user_id'
+          : newCondition.attribute;
+
       if (editingCondition) {
         await conditionsApi.update(editingCondition.id, {
-          attribute: newCondition.attribute,
+          attribute,
           operator: newCondition.operator,
           value: parsedValue,
         });
@@ -186,7 +403,7 @@ export default function RulesPage() {
       } else if (selectedRule) {
         await conditionsApi.create({
           rule: selectedRule.id,
-          attribute: newCondition.attribute,
+          attribute,
           operator: newCondition.operator,
           value: parsedValue,
         });
@@ -281,7 +498,13 @@ export default function RulesPage() {
             flagKey: flag.key,
           })}
           action={
-            <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+            <Dialog
+              open={isRuleDialogOpen}
+              onOpenChange={(open) => {
+                setIsRuleDialogOpen(open);
+                if (!open) resetRuleForm();
+              }}
+            >
               <DialogTrigger render={<Button />}>
                 <Plus className="mr-2 h-4 w-4" />
                 {t('newRuleButton')}
@@ -289,10 +512,14 @@ export default function RulesPage() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle className="text-foreground">
-                    {t('createRuleDialogTitle')}
+                    {editingRule
+                      ? t('editRuleDialogTitle')
+                      : t('createRuleDialogTitle')}
                   </DialogTitle>
                   <DialogDescription className="text-muted-foreground">
-                    {t('createRuleDialogDescription')}
+                    {editingRule
+                      ? t('editRuleDialogDescription')
+                      : t('createRuleDialogDescription')}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -333,17 +560,82 @@ export default function RulesPage() {
                       <option value="OR">{t('operatorLogicOrOption')}</option>
                     </select>
                   </div>
+                  {flag.flag_type === 'MULTIVARIATE' ? (
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="rollout_variant"
+                        className="text-muted-foreground"
+                      >
+                        {t('rolloutVariantLabel')}
+                      </Label>
+                      <select
+                        id="rollout_variant"
+                        className="w-full p-2 border border-border rounded-md bg-muted text-foreground"
+                        value={newRule.rollout_variant}
+                        onChange={(e) =>
+                          setNewRule({
+                            ...newRule,
+                            rollout_variant: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">
+                          {t('rolloutVariantNoneOption')}
+                        </option>
+                        {flag.variants.map((variant) => (
+                          <option key={variant.id} value={variant.id}>
+                            {variant.name}
+                          </option>
+                        ))}
+                      </select>
+                      {newRule.rollout_variant ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label
+                              htmlFor="rollout_percentage"
+                              className="text-muted-foreground"
+                            >
+                              {t('rolloutPercentageLabel')}
+                            </Label>
+                            <span className="font-mono text-sm text-foreground">
+                              {newRule.rollout_percentage}%
+                            </span>
+                          </div>
+                          <Slider
+                            id="rollout_percentage"
+                            min={0}
+                            max={100}
+                            value={[Number(newRule.rollout_percentage) || 0]}
+                            onValueChange={(value) =>
+                              setNewRule({
+                                ...newRule,
+                                rollout_percentage: String(
+                                  Array.isArray(value) ? value[0] : value,
+                                ),
+                              })
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground/70">
+                            {t('rolloutPercentageHint')}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <DialogFooter>
                   <Button
                     variant="outline"
-                    onClick={() => setIsRuleDialogOpen(false)}
+                    onClick={() => {
+                      setIsRuleDialogOpen(false);
+                      resetRuleForm();
+                    }}
                   >
                     {t('cancelButton')}
                   </Button>
-                  <Button onClick={handleCreateRule} disabled={isSaving}>
+                  <Button onClick={handleSaveRule} disabled={isSaving}>
                     {isSaving ? <Spinner size="sm" className="mr-2" /> : null}
-                    {t('createButton')}
+                    {editingRule ? t('updateButton') : t('createButton')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -351,6 +643,148 @@ export default function RulesPage() {
           }
         />
       </div>
+
+      {flag.flag_type === 'MULTIVARIATE' ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-lg text-foreground">
+              {t('variantBreakdownTitle')}
+            </CardTitle>
+            {!isEditingVariants ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={startEditingVariants}
+              >
+                {t('editVariantsButton')}
+              </Button>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            {isEditingVariants ? (
+              <div className="space-y-3">
+                {variantDrafts.map((row, index) => (
+                  <div key={row.id} className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      {row.is_control ? (
+                        <span className="mb-1 block text-xs text-muted-foreground">
+                          {t('variantControlLabel')}
+                        </span>
+                      ) : null}
+                      <Input
+                        value={row.name}
+                        onChange={(e) =>
+                          updateVariantDraft(index, { name: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        {t('variantWeightLabel')}
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-4 text-muted-foreground"
+                                aria-label={t('variantWeightTooltipAriaLabel')}
+                              />
+                            }
+                          >
+                            <Info className="size-3" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {t('variantWeightTooltip')}
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                      {row.is_control ? (
+                        <span className="w-24 shrink-0 text-right font-mono text-sm text-muted-foreground">
+                          {row.percentage_allocation}%
+                        </span>
+                      ) : (
+                        <Input
+                          type="number"
+                          value={row.percentage_allocation}
+                          onChange={(e) =>
+                            updateVariantDraft(index, {
+                              percentage_allocation: e.target.value,
+                            })
+                          }
+                          min={0}
+                          max={getNonControlHeadroom(variantDrafts, index)}
+                          className="w-24"
+                        />
+                      )}
+                    </div>
+                    {row.is_control ? null : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeVariantDraft(index)}
+                        aria-label={t('removeVariantAriaLabel')}
+                      >
+                        &times;
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addVariantDraft}
+                >
+                  {t('addVariantButton')}
+                </Button>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingVariants(false)}
+                  >
+                    {t('cancelButton')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSaveVariants}
+                    disabled={isSavingVariants || !isVariantEditValid}
+                  >
+                    {isSavingVariants ? (
+                      <Spinner size="sm" className="mr-2" />
+                    ) : null}
+                    {t('saveVariantsButton')}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {flag.variants.map((variant) => (
+                  <li
+                    key={variant.id}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <span className="text-foreground">
+                      {variant.name}
+                      {variant.is_control ? (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {t('variantControlBadge')}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="font-mono text-muted-foreground">
+                      {variant.percentage_allocation}%
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {rules.length === 0 ? (
         <Card>
@@ -384,6 +818,17 @@ export default function RulesPage() {
                   >
                     <Plus className="mr-1 h-4 w-4" />
                     {t('addConditionButton')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEditRule(rule)}
+                    className="text-muted-foreground"
+                    aria-label={t('editRuleAriaLabel', {
+                      priority: rule.priority,
+                    })}
+                  >
+                    <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
@@ -428,7 +873,12 @@ export default function RulesPage() {
                           <TableCell className="font-mono text-sm text-foreground">
                             {Array.isArray(condition.value)
                               ? condition.value.join(', ')
-                              : String(condition.value)}
+                              : condition.operator === 'PERCENTAGE_SPLIT' &&
+                                  typeof condition.value === 'object' &&
+                                  condition.value !== null &&
+                                  'value' in condition.value
+                                ? `${(condition.value as { value: unknown }).value}%`
+                                : String(condition.value)}
                           </TableCell>
                           <TableCell>
                             <div className="flex space-x-1">
@@ -502,22 +952,24 @@ export default function RulesPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="attribute" className="text-muted-foreground">
-                {t('attributeLabel')}
-              </Label>
-              <Input
-                id="attribute"
-                placeholder={t('attributePlaceholder')}
-                value={newCondition.attribute}
-                onChange={(e) =>
-                  setNewCondition({
-                    ...newCondition,
-                    attribute: e.target.value,
-                  })
-                }
-              />
-            </div>
+            {newCondition.operator === 'PERCENTAGE_SPLIT' ? null : (
+              <div className="space-y-2">
+                <Label htmlFor="attribute" className="text-muted-foreground">
+                  {t('attributeLabel')}
+                </Label>
+                <Input
+                  id="attribute"
+                  placeholder={t('attributePlaceholder')}
+                  value={newCondition.attribute}
+                  onChange={(e) =>
+                    setNewCondition({
+                      ...newCondition,
+                      attribute: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="operator" className="text-muted-foreground">
                 {t('operatorLabel')}
@@ -537,28 +989,59 @@ export default function RulesPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="value" className="text-muted-foreground">
-                {t('valueLabel')}
-              </Label>
-              <Input
-                id="value"
-                placeholder={
-                  newCondition.operator === 'IN_LIST'
-                    ? t('valuePlaceholderList')
-                    : t('valuePlaceholderDefault')
-                }
-                value={newCondition.value}
-                onChange={(e) =>
-                  setNewCondition({ ...newCondition, value: e.target.value })
-                }
-              />
-              {newCondition.operator === 'IN_LIST' && (
+            {newCondition.operator === 'PERCENTAGE_SPLIT' ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="split_value"
+                    className="text-muted-foreground"
+                  >
+                    {t('valueLabel')}
+                  </Label>
+                  <span className="font-mono text-sm text-foreground">
+                    {Number(newCondition.value) || 0}%
+                  </span>
+                </div>
+                <Slider
+                  id="split_value"
+                  min={0}
+                  max={100}
+                  value={[Number(newCondition.value) || 0]}
+                  onValueChange={(value) =>
+                    setNewCondition({
+                      ...newCondition,
+                      value: String(Array.isArray(value) ? value[0] : value),
+                    })
+                  }
+                />
                 <p className="text-xs text-muted-foreground/70">
-                  {t('inListHint')}
+                  {t('percentageSplitHint')}
                 </p>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="value" className="text-muted-foreground">
+                  {t('valueLabel')}
+                </Label>
+                <Input
+                  id="value"
+                  placeholder={
+                    newCondition.operator === 'IN_LIST'
+                      ? t('valuePlaceholderList')
+                      : t('valuePlaceholderDefault')
+                  }
+                  value={newCondition.value}
+                  onChange={(e) =>
+                    setNewCondition({ ...newCondition, value: e.target.value })
+                  }
+                />
+                {newCondition.operator === 'IN_LIST' && (
+                  <p className="text-xs text-muted-foreground/70">
+                    {t('inListHint')}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button

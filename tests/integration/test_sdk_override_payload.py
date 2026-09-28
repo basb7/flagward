@@ -59,6 +59,16 @@ class TestSDKFlagsPayload:
         assert payload["overridden"] is True
         assert evaluate_locally(payload) is False
 
+    def test_override_payload_has_empty_variants(self, sdk_client, environment):
+        flag = FeatureFlag.objects.create(
+            environment=environment, key="checkout", name="Checkout", is_enabled=True
+        )
+        FlagOverride.objects.create(flag=flag, is_enabled=False, reason="outage")
+
+        payload = sdk_client.get("/api/v1/sdk/flags/").json()["flags"][0]
+
+        assert payload["variants"] == []
+
     def test_enabling_override_is_visible_to_the_sdk(self, sdk_client, environment):
         flag = FeatureFlag.objects.create(
             environment=environment, key="checkout", name="Checkout", is_enabled=False

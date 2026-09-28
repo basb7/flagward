@@ -137,14 +137,14 @@ class TestEvaluationLogViewSet:
         flag = FeatureFlag.objects.create(
             environment=environments["prod"], key="checkout", name="Checkout"
         )
-        EvaluationLog.objects.create(flag=flag, context_hash="a", result=True)
-        EvaluationLog.objects.create(flag=flag, context_hash="b", result=False)
+        EvaluationLog.objects.create(flag=flag, context_hash="a", result="true")
+        EvaluationLog.objects.create(flag=flag, context_hash="b", result="false")
 
         response = client.get("/api/v1/evaluations/?result=false")
 
         assert response.status_code == 200
         assert response.data["count"] == 1
-        assert response.data["results"][0]["result"] is False
+        assert response.data["results"][0]["result"] == "false"
 
     def test_filters_by_environment(self, client, environments):
         prod_flag = FeatureFlag.objects.create(
@@ -332,20 +332,21 @@ class TestQueryParamFilterMixin:
 
     @pytest.mark.parametrize("raw,expected_result", [("false", False), ("0", False), ("true", True), ("1", True)])
     def test_accepts_common_boolean_literals(self, client, environments, raw, expected_result):
-        flag = FeatureFlag.objects.create(
-            environment=environments["prod"], key="checkout", name="Checkout"
+        FeatureFlag.objects.create(
+            environment=environments["prod"], key="enabled", name="Enabled", is_enabled=True
         )
-        EvaluationLog.objects.create(flag=flag, context_hash="a", result=True)
-        EvaluationLog.objects.create(flag=flag, context_hash="b", result=False)
+        FeatureFlag.objects.create(
+            environment=environments["prod"], key="disabled", name="Disabled", is_enabled=False
+        )
 
-        response = client.get(f"/api/v1/evaluations/?result={raw}")
+        response = client.get(f"/api/v1/flags/?is_enabled={raw}")
 
         assert response.status_code == 200
         assert response.data["count"] == 1
-        assert response.data["results"][0]["result"] is expected_result
+        assert response.data["results"][0]["is_enabled"] is expected_result
 
     def test_rejects_a_non_boolean_value(self, client, environments):
-        response = client.get("/api/v1/evaluations/?result=banana")
+        response = client.get("/api/v1/flags/?is_enabled=banana")
 
         assert response.status_code == 400
 
@@ -366,7 +367,9 @@ class TestFlagListQueryCount:
         # Warm the session/auth queries so the count reflects the list itself.
         client.get("/api/v1/flags/")
 
-        with django_assert_num_queries(4):
+        # 5 fixed queries (not per-flag): flags, rules, rules__conditions,
+        # variants, and the active-overrides Prefetch.
+        with django_assert_num_queries(5):
             response = client.get("/api/v1/flags/")
 
         assert response.status_code == 200

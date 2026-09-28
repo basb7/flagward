@@ -1,6 +1,7 @@
 """
 Services for core_flags evaluation engine.
 """
+import hashlib
 from typing import Any
 
 from core_flags.models import (
@@ -8,6 +9,7 @@ from core_flags.models import (
     ConditionOperator,
     FeatureFlag,
     FlagOverride,
+    FlagType,
     StrategyRule,
 )
 
@@ -38,23 +40,93 @@ class FlagEvaluationService:
 
         rules = flag.rules.all().order_by("priority")
 
+        if flag.flag_type == FlagType.MULTIVARIATE:
+            return self._evaluate_multivariate(flag, rules, context)
+
         if not rules.exists():
             return True
 
         for rule in rules:
-            result = self._evaluate_rule(rule, context)
+            result = self._evaluate_rule(rule, context, flag.key)
             if result:
                 return True
 
         return False
 
-    def _evaluate_rule(self, rule: StrategyRule, context: dict[str, Any]) -> bool:
+    def _evaluate_multivariate(
+        self, flag: FeatureFlag, rules, context: dict[str, Any]
+    ) -> str:
+        """
+        Evaluate a MULTIVARIATE flag: a matching rule with its own rollout wins
+        for the share of users under `rollout_percentage`; everyone else --
+        excluded from that rollout, matched a rule with no rollout of its own,
+        or matched no rule at all -- falls through to the flag's global
+        percentage split.
+        """
+        for rule in rules:
+            if not self._evaluate_rule(rule, context, flag.key):
+                continue
+
+            if rule.rollout_variant is None:
+                break
+
+            if rule.rollout_percentage is None or rule.rollout_percentage >= 100:
+                # None means "no percentage given", which behaves like the
+                # documented default of 100: every bucket value satisfies
+                # "< 100", so no hash -- and no user_id -- is needed here.
+                return rule.rollout_variant.name
+
+            user_key = context.get("user_id")
+            if user_key is None:
+                return flag.variants.get(is_control=True).name
+
+            if self._hash_bucket(user_key, flag.key) < rule.rollout_percentage:
+                return rule.rollout_variant.name
+
+            break
+
+        return self._assign_by_percentage(flag, context)
+
+    def _hash_bucket(self, user_key: str, flag_key: str) -> float:
+        """Hash a user key + flag key into a deterministic float in [0, 100).
+
+        Salted by `flag.key`, not `flag.id`: the key is what the SDK wire
+        payload carries, so this is the one formula both the backend and the
+        SDKs can reproduce from the same inputs.
+        """
+        digest = hashlib.md5(f"{user_key}:{flag_key}".encode()).hexdigest()
+        return int(digest[:8], 16) % 10000 / 100.0
+
+    def _assign_by_percentage(self, flag: FeatureFlag, context: dict[str, Any]) -> str:
+        """Assign a variant deterministically by the flag's global percentage allocation."""
+        user_key = context.get("user_id")
+        variants = flag.variants.order_by("id")
+
+        if user_key is None:
+            return flag.variants.get(is_control=True).name
+
+        bucket_value = self._hash_bucket(user_key, flag.key)
+
+        cumulative = 0.0
+        for variant in variants:
+            cumulative += variant.percentage_allocation
+            if bucket_value < cumulative:
+                return variant.name
+
+        return variants.last().name
+
+    def _evaluate_rule(
+        self, rule: StrategyRule, context: dict[str, Any], flag_key: str
+    ) -> bool:
         """
         Evaluate a strategy rule with the given context.
 
         Args:
             rule: The strategy rule to evaluate
             context: Dictionary of attributes to evaluate against
+            flag_key: The owning flag's key, passed down from the caller
+                (which already holds the flag) rather than read off
+                `rule.flag` -- that would be an extra query per rule.
 
         Returns:
             Boolean result based on operator logic
@@ -65,21 +137,36 @@ class FlagEvaluationService:
             return True
 
         if rule.operator_logic == "AND":
-            return all(self._evaluate_condition(c, context) for c in conditions)
+            return all(
+                self._evaluate_condition(c, context, salt=flag_key)
+                for c in conditions
+            )
         else:  # OR
-            return any(self._evaluate_condition(c, context) for c in conditions)
+            return any(
+                self._evaluate_condition(c, context, salt=flag_key)
+                for c in conditions
+            )
 
-    def _evaluate_condition(self, condition: Condition, context: dict[str, Any]) -> bool:
+    def _evaluate_condition(
+        self, condition: Condition, context: dict[str, Any], salt=None
+    ) -> bool:
         """
         Evaluate a condition with the given context.
 
         Args:
             condition: The condition to evaluate
             context: Dictionary of attributes to evaluate against
+            salt: Stable per-flag salt for the PERCENTAGE_SPLIT hash
+                (the owning flag's `key` — no extra query needed)
 
         Returns:
             Boolean result based on operator
         """
+        operator = condition.operator
+
+        if operator == ConditionOperator.PERCENTAGE_SPLIT:
+            return self._evaluate_percentage_split(condition, context, salt)
+
         attribute_value = context.get(condition.attribute)
 
         if attribute_value is None:
@@ -89,8 +176,6 @@ class FlagEvaluationService:
 
         if expected_value is None:
             return False
-
-        operator = condition.operator
 
         if operator == ConditionOperator.EQUALS:
             return attribute_value == expected_value
@@ -106,3 +191,27 @@ class FlagEvaluationService:
             return expected_value in attribute_value
         else:
             return False
+
+    def _evaluate_percentage_split(
+        self, condition: Condition, context: dict[str, Any], salt
+    ) -> bool:
+        """
+        Flagsmith-style `% Split`: the identity enters the segment only when
+        its deterministic bucket falls under the configured percentage.
+
+        Needs no trait — the bucket comes from `user_id` alone, so the
+        condition's `attribute` is ignored. Without a `user_id` (or a salt)
+        there is no bucket to compute, and the identity does not enter.
+        """
+        if salt is None:
+            return False
+        user_key = context.get("user_id")
+        if user_key is None:
+            return False
+        raw = condition.value
+        expected = raw.get("value") if isinstance(raw, dict) else raw
+        if isinstance(expected, bool) or not isinstance(expected, (int, float)):
+            return False
+        if not 0 <= expected <= 100:
+            return False
+        return self._hash_bucket(user_key, salt) < expected

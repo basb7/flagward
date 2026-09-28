@@ -10,6 +10,7 @@ router = DefaultRouter()
 router.register(r'environments', views.EnvironmentViewSet)
 router.register(r'flags', views.FeatureFlagViewSet)
 router.register(r'rules', views.StrategyRuleViewSet)
+router.register(r'variants', views.VariantViewSet)
 router.register(r'conditions', views.ConditionViewSet)
 router.register(r'overrides', views.FlagOverrideViewSet)
 

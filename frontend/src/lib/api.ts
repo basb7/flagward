@@ -300,12 +300,23 @@ export interface FeatureFlag {
   active_override: ActiveOverride | null;
   flag_type: 'BOOLEAN' | 'MULTIVARIATE';
   rules: StrategyRule[];
+  variants: Variant[];
+}
+
+export interface Variant {
+  id: string;
+  flag: string;
+  name: string;
+  percentage_allocation: number;
+  is_control: boolean;
 }
 
 export interface StrategyRule {
   id: string;
   priority: number;
   operator_logic: 'AND' | 'OR';
+  rollout_variant: string | null;
+  rollout_percentage: number | null;
   conditions: Condition[];
 }
 
@@ -329,6 +340,7 @@ export const flagsApi = {
     key: string;
     name: string;
     description?: string;
+    flag_type?: 'BOOLEAN' | 'MULTIVARIATE';
   }) =>
     request<FeatureFlag>('/api/v1/flags/', {
       method: 'POST',
@@ -352,6 +364,8 @@ export interface StrategyRuleCreate {
   flag: string;
   priority: number;
   operator_logic: 'AND' | 'OR';
+  rollout_variant?: string | null;
+  rollout_percentage?: number | null;
 }
 
 export const rulesApi = {
@@ -377,6 +391,79 @@ export const rulesApi = {
   delete: (id: string) =>
     request<void>(`/api/v1/rules/${id}/`, {
       method: 'DELETE',
+    }),
+};
+
+// Variants API
+export const variantsApi = {
+  list: (flagId?: string) => {
+    const params = flagId ? `?flag=${flagId}` : '';
+    return request<PaginatedResponse<Variant>>(`/api/v1/variants/${params}`);
+  },
+
+  get: (id: string) => request<Variant>(`/api/v1/variants/${id}/`),
+
+  create: (data: {
+    flag: string;
+    name: string;
+    percentage_allocation: number;
+    is_control?: boolean;
+  }) =>
+    request<Variant>('/api/v1/variants/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<Variant>) =>
+    request<Variant>(`/api/v1/variants/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/api/v1/variants/${id}/`, {
+      method: 'DELETE',
+    }),
+
+  /**
+   * Creates a flag's entire variant set in one atomic request, validated as
+   * a whole (percentages summing to 100, exactly one control) rather than
+   * row-by-row -- the only way the first variant of a fresh flag can ever be
+   * created, since a lone row can never sum to 100 on its own.
+   */
+  bulkCreate: (
+    flagId: string,
+    variants: {
+      name: string;
+      percentage_allocation: number;
+      is_control: boolean;
+    }[],
+  ) =>
+    request<Variant[]>(`/api/v1/flags/${flagId}/variants/`, {
+      method: 'POST',
+      body: JSON.stringify({ variants }),
+    }),
+
+  /**
+   * Creates, updates, and deletes a flag's variant set in one atomic
+   * request, validated as a whole (percentages summing to 100, exactly one
+   * control) -- editing rows independently through PATCH would validate
+   * each one against the *others*' stale percentages and reject valid
+   * rebalances. An item with no `id` is created; an existing id omitted
+   * from the list is deleted.
+   */
+  replaceSet: (
+    flagId: string,
+    variants: {
+      id?: string;
+      name: string;
+      percentage_allocation: number;
+      is_control: boolean;
+    }[],
+  ) =>
+    request<Variant[]>(`/api/v1/flags/${flagId}/variants/`, {
+      method: 'PUT',
+      body: JSON.stringify({ variants }),
     }),
 };
 

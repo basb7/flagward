@@ -6,12 +6,14 @@ access-control, flag-management).
 These are the tests design D7 lists as items 9-11: cross-tenant read/write
 isolation, the non-`User` principal guard, and the router-coverage sweep.
 """
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from core_flags.api.serializers import FeatureFlagSerializer
-from core_flags.models import Environment, FeatureFlag
+from core_flags.models import Environment, FeatureFlag, FlagType, StrategyRule, Variant
 from tenancy.models import EnvironmentRole, Invitation, OrganizationRole, ProjectRole
 
 
@@ -31,6 +33,17 @@ def tenant_b(make_project, make_environment, make_flag):
     environment = make_environment(project=project, key="prod")
     flag = make_flag(environment=environment, key="checkout")
     return {"project": project, "environment": environment, "flag": flag}
+
+
+@pytest.fixture
+def mv_flag(tenant_a, make_flag):
+    """A MULTIVARIATE flag alongside tenant_a's own (boolean) flag."""
+    return make_flag(
+        environment=tenant_a["environment"],
+        key="pricing",
+        name="Pricing",
+        flag_type=FlagType.MULTIVARIATE,
+    )
 
 
 @pytest.mark.django_db
@@ -128,7 +141,7 @@ class TestRouterCoverage:
                     f"{viewset.__name__} left environment_lookup unset"
                 )
 
-        assert checked == 7, "expected the 5 core_flags + 2 sdk_api viewsets"
+        assert checked == 8, "expected the 6 core_flags + 2 sdk_api viewsets"
 
 
 @pytest.mark.django_db
@@ -378,3 +391,749 @@ class TestNoSuperuserBypass:
         assert response.status_code == 404
         invitation.refresh_from_db()
         assert invitation.revoked_at is None
+
+
+@pytest.mark.django_db
+class TestFeatureFlagSerializerIncludesVariants:
+    """Regression: the dashboard's flag detail crashed with `variants` undefined
+    because `FeatureFlagSerializer` never exposed the field the SDK payload
+    already carried."""
+
+    def test_multivariate_flag_serializes_its_variants(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
+        Variant.objects.create(
+            flag=mv_flag, name="control", percentage_allocation=100, is_control=True
+        )
+        client = api_client(user)
+
+        response = client.get(f"/api/v1/flags/{mv_flag.id}/")
+
+        assert response.status_code == 200
+        assert response.data["variants"] == [
+            {
+                "id": str(mv_flag.variants.get().id),
+                "flag": mv_flag.id,
+                "name": "control",
+                "percentage_allocation": 100,
+                "is_control": True,
+            }
+        ]
+
+    def test_boolean_flag_serializes_an_empty_variants_list(
+        self, api_client, user, grant, tenant_a
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
+        client = api_client(user)
+
+        response = client.get(f"/api/v1/flags/{tenant_a['flag'].id}/")
+
+        assert response.status_code == 200
+        assert response.data["variants"] == []
+
+
+@pytest.mark.django_db
+class TestVariantViewSet:
+    """spec: flag-management Variant Management (Phase 2, tasks 2.1-2.6)."""
+
+    def test_create_variant(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            "/api/v1/variants/",
+            {"flag": str(mv_flag.id), "name": "control", "percentage_allocation": 100, "is_control": True},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert Variant.objects.filter(flag=mv_flag, name="control").exists()
+
+    def test_reject_variant_on_boolean_flag(self, api_client, user, grant, tenant_a):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            "/api/v1/variants/",
+            {"flag": str(tenant_a["flag"].id), "name": "control", "percentage_allocation": 100},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not Variant.objects.filter(flag=tenant_a["flag"]).exists()
+
+    def test_reject_percentage_not_summing_to_100(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=50, is_control=True)
+
+        response = client.post(
+            "/api/v1/variants/",
+            {"flag": str(mv_flag.id), "name": "treatment", "percentage_allocation": 30},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not Variant.objects.filter(flag=mv_flag, name="treatment").exists()
+
+    def test_reject_duplicate_name_on_same_flag(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=50, is_control=True)
+
+        response = client.post(
+            "/api/v1/variants/",
+            {"flag": str(mv_flag.id), "name": "control", "percentage_allocation": 50},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(flag=mv_flag, name="control").count() == 1
+
+    def test_reject_second_control_variant(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=50, is_control=True)
+
+        response = client.post(
+            "/api/v1/variants/",
+            {"flag": str(mv_flag.id), "name": "treatment", "percentage_allocation": 50, "is_control": True},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not Variant.objects.filter(flag=mv_flag, name="treatment").exists()
+
+    def test_sole_variant_becomes_control_automatically(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            "/api/v1/variants/",
+            {"flag": str(mv_flag.id), "name": "control", "percentage_allocation": 100, "is_control": False},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert Variant.objects.get(flag=mv_flag, name="control").is_control is True
+
+    def test_second_variant_allows_explicit_non_control(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=50, is_control=True)
+
+        response = client.post(
+            "/api/v1/variants/",
+            {"flag": str(mv_flag.id), "name": "treatment", "percentage_allocation": 50, "is_control": False},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert Variant.objects.filter(flag=mv_flag, name="treatment", is_control=False).exists()
+
+    def test_reject_removing_last_control_with_two_or_more_variants(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        control = Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=50, is_control=True)
+        Variant.objects.create(flag=mv_flag, name="treatment", percentage_allocation=50, is_control=False)
+
+        response = client.patch(
+            f"/api/v1/variants/{control.id}/",
+            {"is_control": False},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        control.refresh_from_db()
+        assert control.is_control is True
+
+    def test_reject_deleting_variant_in_use(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        variant = Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=100, is_control=True)
+        rule = StrategyRule.objects.create(flag=mv_flag, rollout_variant=variant, rollout_percentage=100)
+
+        response = client.delete(f"/api/v1/variants/{variant.id}/")
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(id=variant.id).exists()
+        rule.refresh_from_db()
+        assert rule.rollout_variant_id == variant.id
+
+    def test_reject_deleting_control_variant_while_others_remain(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        control = Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=50, is_control=True)
+        Variant.objects.create(flag=mv_flag, name="treatment", percentage_allocation=50, is_control=False)
+
+        response = client.delete(f"/api/v1/variants/{control.id}/")
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(id=control.id).exists()
+
+    def test_reject_deleting_the_only_remaining_variant(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        control = Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=100, is_control=True)
+
+        response = client.delete(f"/api/v1/variants/{control.id}/")
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(id=control.id).exists()
+
+
+@pytest.mark.django_db
+class TestFeatureFlagBulkVariants:
+    """spec: flag-management, atomic whole-set variant creation on POST /api/v1/flags/{id}/variants/."""
+
+    def test_bulk_create_three_variants_summing_to_100(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"name": "control", "percentage_allocation": 40, "is_control": True},
+                    {"name": "treatment_a", "percentage_allocation": 30, "is_control": False},
+                    {"name": "treatment_b", "percentage_allocation": 30, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert Variant.objects.filter(flag=mv_flag).count() == 3
+        assert Variant.objects.get(flag=mv_flag, name="control").is_control is True
+
+    def test_bulk_create_rejects_percentages_not_summing_to_100_and_rolls_back(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"name": "control", "percentage_allocation": 40, "is_control": True},
+                    {"name": "treatment_a", "percentage_allocation": 30, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(flag=mv_flag).count() == 0
+
+    def test_bulk_create_rejects_boolean_flag(self, api_client, user, grant, tenant_a):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            f"/api/v1/flags/{tenant_a['flag'].id}/variants/",
+            {
+                "variants": [
+                    {"name": "control", "percentage_allocation": 100, "is_control": True},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(flag=tenant_a["flag"]).count() == 0
+
+    def test_bulk_create_rejects_flag_that_already_has_variants(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=100, is_control=True)
+
+        response = client.post(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"name": "treatment", "percentage_allocation": 100, "is_control": True},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(flag=mv_flag).count() == 1
+
+    def test_bulk_create_rejects_duplicate_names(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"name": "control", "percentage_allocation": 50, "is_control": True},
+                    {"name": "control", "percentage_allocation": 50, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(flag=mv_flag).count() == 0
+
+    def test_bulk_create_rejects_two_control_variants(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"name": "control", "percentage_allocation": 50, "is_control": True},
+                    {"name": "treatment", "percentage_allocation": 50, "is_control": True},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(flag=mv_flag).count() == 0
+
+    def test_bulk_create_single_variant_becomes_control_regardless_of_submitted_value(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"name": "control", "percentage_allocation": 100, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert Variant.objects.get(flag=mv_flag, name="control").is_control is True
+
+    def test_bulk_create_rejects_without_flag_edit_capability(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.VIEWER)
+        client = api_client(user)
+
+        response = client.post(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"name": "control", "percentage_allocation": 100, "is_control": True},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 403
+        assert Variant.objects.filter(flag=mv_flag).count() == 0
+
+
+@pytest.mark.django_db
+class TestFeatureFlagReplaceVariants:
+    """spec: flag-management, atomic whole-set variant replace on PUT /api/v1/flags/{id}/variants/."""
+
+    def _existing_pair(self, mv_flag):
+        control = Variant.objects.create(
+            flag=mv_flag, name="control", percentage_allocation=50, is_control=True
+        )
+        treatment = Variant.objects.create(
+            flag=mv_flag, name="treatment_a", percentage_allocation=50, is_control=False
+        )
+        return control, treatment
+
+    def test_replace_rebalances_percentages_across_rows(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 70, "is_control": True},
+                    {"id": str(treatment.id), "name": "treatment_a", "percentage_allocation": 30, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        control.refresh_from_db()
+        treatment.refresh_from_db()
+        assert control.percentage_allocation == 70
+        assert treatment.percentage_allocation == 30
+
+    def test_replace_can_rename_and_move_control_to_another_row(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "baseline", "percentage_allocation": 40, "is_control": False},
+                    {"id": str(treatment.id), "name": "treatment_a", "percentage_allocation": 60, "is_control": True},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        control.refresh_from_db()
+        treatment.refresh_from_db()
+        assert control.name == "baseline"
+        assert control.is_control is False
+        assert treatment.is_control is True
+
+    def test_replace_rejects_percentages_not_summing_to_100_without_writing(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 70, "is_control": True},
+                    {"id": str(treatment.id), "name": "treatment_a", "percentage_allocation": 20, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        control.refresh_from_db()
+        assert control.percentage_allocation == 50
+
+    def test_replace_can_remove_an_existing_variant(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 100, "is_control": True},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert not Variant.objects.filter(id=treatment.id).exists()
+        control.refresh_from_db()
+        assert control.percentage_allocation == 100
+
+    def test_replace_can_add_a_new_variant(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 40, "is_control": True},
+                    {
+                        "id": str(treatment.id),
+                        "name": "treatment_a",
+                        "percentage_allocation": 30,
+                        "is_control": False,
+                    },
+                    {"name": "treatment_b", "percentage_allocation": 30, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert Variant.objects.filter(flag=mv_flag).count() == 3
+        new_variant = Variant.objects.get(flag=mv_flag, name="treatment_b")
+        assert new_variant.percentage_allocation == 30
+        assert new_variant.is_control is False
+
+    def test_replace_rejects_removing_a_variant_forced_by_a_rule(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        rule = StrategyRule.objects.create(
+            flag=mv_flag, priority=0, rollout_variant=treatment, rollout_percentage=100
+        )
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 100, "is_control": True},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert Variant.objects.filter(id=treatment.id).exists()
+        rule.refresh_from_db()
+        assert rule.rollout_variant_id == treatment.id
+
+    def test_replace_rejects_an_id_from_another_flag(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, _treatment = self._existing_pair(mv_flag)
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 50, "is_control": True},
+                    {"id": str(uuid.uuid4()), "name": "treatment_a", "percentage_allocation": 50, "is_control": False},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+
+    def test_replace_preserves_a_rollout_variant_reference_on_rename(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        control, treatment = self._existing_pair(mv_flag)
+        rule = StrategyRule.objects.create(
+            flag=mv_flag, priority=0, rollout_variant=treatment, rollout_percentage=100
+        )
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.put(
+            f"/api/v1/flags/{mv_flag.id}/variants/",
+            {
+                "variants": [
+                    {"id": str(control.id), "name": "control", "percentage_allocation": 50, "is_control": True},
+                    {
+                        "id": str(treatment.id),
+                        "name": "renamed_treatment",
+                        "percentage_allocation": 50,
+                        "is_control": False,
+                    },
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        rule.refresh_from_db()
+        assert rule.rollout_variant_id == treatment.id
+        assert rule.rollout_variant.name == "renamed_treatment"
+
+
+@pytest.mark.django_db
+class TestStrategyRuleRollout:
+    """spec: flag-management Strategy Rule Management, rollout_variant/rollout_percentage scenarios."""
+
+    def test_create_rule_with_rollout_variant_defaults_percentage_to_100(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        variant = Variant.objects.create(flag=mv_flag, name="control", percentage_allocation=100, is_control=True)
+
+        response = client.post(
+            "/api/v1/rules/",
+            {"flag": str(mv_flag.id), "priority": 0, "operator_logic": "AND", "rollout_variant": str(variant.id)},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        rule = StrategyRule.objects.get(id=response.data["id"])
+        assert rule.rollout_variant_id == variant.id
+        assert rule.rollout_percentage == 100
+
+    def test_create_rule_with_an_explicit_partial_rollout_percentage(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        variant = Variant.objects.create(flag=mv_flag, name="treatment", percentage_allocation=0)
+
+        response = client.post(
+            "/api/v1/rules/",
+            {
+                "flag": str(mv_flag.id),
+                "priority": 0,
+                "operator_logic": "AND",
+                "rollout_variant": str(variant.id),
+                "rollout_percentage": 10,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert StrategyRule.objects.get(id=response.data["id"]).rollout_percentage == 10
+
+    def test_reject_rollout_variant_from_a_different_flag(
+        self, api_client, user, grant, tenant_a, mv_flag, make_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        other_flag = make_flag(
+            environment=tenant_a["environment"],
+            key="other",
+            name="Other",
+            flag_type=FlagType.MULTIVARIATE,
+        )
+        foreign_variant = Variant.objects.create(
+            flag=other_flag, name="control", percentage_allocation=100, is_control=True
+        )
+
+        response = client.post(
+            "/api/v1/rules/",
+            {
+                "flag": str(mv_flag.id),
+                "priority": 0,
+                "operator_logic": "AND",
+                "rollout_variant": str(foreign_variant.id),
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not StrategyRule.objects.filter(flag=mv_flag).exists()
+
+    def test_reject_rollout_variant_on_boolean_flag(self, api_client, user, grant, tenant_a):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        variant = Variant.objects.create(
+            flag=tenant_a["flag"], name="control", percentage_allocation=100, is_control=True
+        )
+
+        response = client.post(
+            "/api/v1/rules/",
+            {
+                "flag": str(tenant_a["flag"].id),
+                "priority": 0,
+                "operator_logic": "AND",
+                "rollout_variant": str(variant.id),
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not StrategyRule.objects.filter(flag=tenant_a["flag"]).exists()
+
+    def test_reject_rollout_percentage_out_of_range(self, api_client, user, grant, tenant_a, mv_flag):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        variant = Variant.objects.create(flag=mv_flag, name="treatment", percentage_allocation=0)
+
+        response = client.post(
+            "/api/v1/rules/",
+            {
+                "flag": str(mv_flag.id),
+                "priority": 0,
+                "operator_logic": "AND",
+                "rollout_variant": str(variant.id),
+                "rollout_percentage": 150,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not StrategyRule.objects.filter(flag=mv_flag).exists()
+
+    def test_reject_rollout_percentage_without_rollout_variant(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+
+        response = client.post(
+            "/api/v1/rules/",
+            {
+                "flag": str(mv_flag.id),
+                "priority": 0,
+                "operator_logic": "AND",
+                "rollout_percentage": 50,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not StrategyRule.objects.filter(flag=mv_flag).exists()
+
+    def test_raising_rollout_percentage_is_an_ordinary_patch(
+        self, api_client, user, grant, tenant_a, mv_flag
+    ):
+        grant(user, org=tenant_a["project"].organization, role=OrganizationRole.USER)
+        grant(user, environment=tenant_a["environment"], role=EnvironmentRole.EDITOR)
+        client = api_client(user)
+        variant = Variant.objects.create(flag=mv_flag, name="treatment", percentage_allocation=0)
+        rule = StrategyRule.objects.create(
+            flag=mv_flag, priority=0, rollout_variant=variant, rollout_percentage=10
+        )
+
+        response = client.patch(
+            f"/api/v1/rules/{rule.id}/", {"rollout_percentage": 50}, format="json"
+        )
+
+        assert response.status_code == 200
+        rule.refresh_from_db()
+        assert rule.rollout_percentage == 50
