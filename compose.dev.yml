@@ -64,6 +64,12 @@ services:
       # FREE, STARTER or TEAM in your shell or .env to exercise a plan's
       # ceilings; the ceilings themselves are in tenancy/capabilities.py.
       - DEFAULT_ORGANIZATION_PLAN=${DEFAULT_ORGANIZATION_PLAN:-COMMUNITY}
+      # Anonymous telemetry (docs/telemetry.md). CI is forwarded because the
+      # runner's environment does not reach this container otherwise, and a CI
+      # run must not report itself as a development install.
+      - CI=${CI:-}
+      - FLAGWARD_TELEMETRY=${FLAGWARD_TELEMETRY:-}
+      - FLAGWARD_TELEMETRY_URL=${FLAGWARD_TELEMETRY_URL:-}
     depends_on:
       db:
         condition: service_healthy

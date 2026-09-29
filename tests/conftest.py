@@ -28,6 +28,12 @@ MEMBERSHIP_TABLES = frozenset(
 )
 
 
+@pytest.fixture(autouse=True)
+def _telemetry_off(settings):
+    """No test reaches the telemetry collector unless it opts in explicitly."""
+    settings.FLAGWARD_TELEMETRY = "false"
+
+
 @pytest.fixture
 def organization():
     return Organization.objects.create(name="Acme", plan="COMMUNITY")

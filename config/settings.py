@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     'analytics',
     'authentication',
     'tenancy',
+    'telemetry',
 ]
 
 MIDDLEWARE = [
@@ -392,3 +393,29 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'x-api-key',
 ]
+
+# Anonymous installation telemetry -- see telemetry/ and docs/telemetry.md.
+#
+# FLAGWARD_TELEMETRY is kept raw (None when unset) because "unset" and "false"
+# mean different things: an explicit value always wins, while unset means on
+# unless this process runs inside a CI pipeline. telemetry.settings.is_enabled()
+# is the only place that interprets it.
+FLAGWARD_TELEMETRY = os.getenv('FLAGWARD_TELEMETRY')
+# Empty means the default collector; telemetry.settings.telemetry_url() resolves it.
+FLAGWARD_TELEMETRY_URL = env_base_url('FLAGWARD_TELEMETRY_URL', '')
+FLAGWARD_VERSION = os.getenv('FLAGWARD_VERSION')
+CI = env_flag('CI', False)
+
+# Django's default logging has no handler for application loggers, so without
+# this the telemetry startup notice would never reach the server log. INFO
+# only: send failures are logged at DEBUG and stay out of the way.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'loggers': {
+        'telemetry': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}
