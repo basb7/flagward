@@ -59,6 +59,9 @@ services:
       # Unlimited unless a deployment says otherwise. A hosted deployment sets
       # FREE here; a self-hosted one leaves it alone.
       - DEFAULT_ORGANIZATION_PLAN=${DEFAULT_ORGANIZATION_PLAN:-COMMUNITY}
+      # Anonymous telemetry, on unless set to false. See docs/telemetry.md for
+      # every field sent.
+      - FLAGWARD_TELEMETRY=${FLAGWARD_TELEMETRY:-}
     depends_on:
       db:
         condition: service_healthy
