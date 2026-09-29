@@ -30,7 +30,7 @@ class TestSDKTypeCoversThePublishedAdapters:
 
     @pytest.mark.parametrize(
         "sdk_type",
-        ["JAVASCRIPT", "REACT", "VUE", "SOLID", "SVELTE"],
+        ["JAVASCRIPT", "REACT", "VUE", "SOLID", "SVELTE", "OPENFEATURE_WEB"],
     )
     def test_a_published_javascript_adapter_has_a_type(self, sdk_type):
         """The value the adapter sends is one this enum recognises."""

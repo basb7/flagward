@@ -12,8 +12,9 @@ class SDKType(models.TextChoices):
     """
     What a registering SDK calls itself.
 
-    `@flagward/core` sends JAVASCRIPT and each framework adapter overrides it
-    with its own name, so the dashboard can tell a React app from a Svelte one
+    `@flagward/core` sends JAVASCRIPT, each framework adapter overrides it
+    with its own name, and `@flagward/openfeature-web` sends OPENFEATURE_WEB,
+    so the dashboard can tell a React app from a Svelte one
     inside the same environment -- the uniqueness constraint below is on
     (environment, sdk_type), which is what makes those separate inventory rows
     rather than one row fighting over a version string.
@@ -31,6 +32,7 @@ class SDKType(models.TextChoices):
     VUE = "VUE", "Vue"
     SOLID = "SOLID", "Solid"
     SVELTE = "SVELTE", "Svelte"
+    OPENFEATURE_WEB = "OPENFEATURE_WEB", "OpenFeature (web)"
 
 
 class SDKRegistration(models.Model):

@@ -26,6 +26,7 @@ class TestSdkTypeName:
             ("react", "react"),
             ("JavaScript", "javascript"),
             ("SVELTE", "svelte"),
+            ("OPENFEATURE_WEB", "openfeature-web"),
         ],
     )
     def test_a_known_type_is_reported_lowercased(self, raw, expected):
