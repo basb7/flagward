@@ -62,7 +62,6 @@ services:
       # Anonymous telemetry, on unless set to false. See docs/telemetry.md for
       # every field sent.
       - FLAGWARD_TELEMETRY=${FLAGWARD_TELEMETRY:-}
-      - FLAGWARD_TELEMETRY_URL=${FLAGWARD_TELEMETRY_URL:-}
     depends_on:
       db:
         condition: service_healthy

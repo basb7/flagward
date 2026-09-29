@@ -15,7 +15,11 @@ Flagward sends anonymous, aggregate usage data once a day so maintainers know ho
 - API keys, `SECRET_KEY`, hostnames, domains, IP addresses
 - Any free text: SDK names and versions reported by clients are mapped to a fixed list (`other` / `unknown` otherwise)
 
-The collector necessarily sees the IP address of the HTTP request; it does not store it.
+Heartbeats go to `https://telemetry.flagward.com/v1/heartbeat` — always; the destination is not configurable. The IP address of the request is dropped by the collector's proxy before the request reaches the application, and no access logs are kept, so it is never stored. The collector is open source: [basb7/flagward-telemetry](https://github.com/basb7/flagward-telemetry).
+
+## Where the data ends up
+
+Every aggregate is public at [telemetry.flagward.com](https://telemetry.flagward.com) (and as JSON at [`/v1/stats`](https://telemetry.flagward.com/v1/stats)). Each installation counts once however large it is, and any group of fewer than five installations is shown only as "other".
 
 ## When it is on
 
@@ -79,17 +83,14 @@ Anonymous telemetry is on. Disable it with FLAGWARD_TELEMETRY=false. See docs/te
 
 Any change to this list bumps `schema_version` and is documented here first.
 
-## Inspecting it locally
+## Inspecting it
 
 ```bash
-# 1. Start a local collector that prints what it receives
-python scripts/telemetry_stub.py
+# Print the exact payload this installation would send. Nothing is sent.
+python manage.py telemetry --show
 
-# 2. In another terminal, preview and send
-FLAGWARD_TELEMETRY=true FLAGWARD_TELEMETRY_URL=http://localhost:9999 python manage.py telemetry --show
-FLAGWARD_TELEMETRY=true FLAGWARD_TELEMETRY_URL=http://localhost:9999 python manage.py telemetry --send
+# Send it now instead of waiting for the daily heartbeat (counts as today's).
+FLAGWARD_TELEMETRY=true python manage.py telemetry --send
 ```
 
-From a compose container use `FLAGWARD_TELEMETRY_URL=http://host.docker.internal:9999` (on Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]` to the backend service).
-
-`--send` sends immediately, ignoring the 24-hour window, and counts as that day's heartbeat.
+In Docker: `docker compose exec backend python manage.py telemetry --show`.

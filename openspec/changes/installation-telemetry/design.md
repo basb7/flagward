@@ -5,6 +5,14 @@
 **Phase**: sdd-design
 **Change**: installation-telemetry
 
+## Revision: fixed destination (2026-09-29)
+
+After the collector was deployed at `telemetry.flagward.com`, the destination became fixed: `FLAGWARD_TELEMETRY_URL` is removed, and `telemetry.settings.TELEMETRY_URL` is the only place heartbeats can go. Operators can still turn telemetry off with `FLAGWARD_TELEMETRY=false`; they cannot redirect it. Consequences:
+
+- `compose.yml` / `compose.dev.yml` / `.env.example` no longer mention the URL.
+- `scripts/telemetry_stub.py` is removed (nothing can point at it any more); `manage.py telemetry --show` remains the way to inspect the payload.
+- Earlier mentions of `FLAGWARD_TELEMETRY_URL` and the stub in this change's documents describe the first iteration.
+
 ## Technical Approach
 
 A new `telemetry` Django app owns one singleton table (`InstallationIdentity`), a pure payload builder, a stdlib HTTP sender, and a background loop. The loop is started explicitly from `config/asgi.py` / `config/wsgi.py` (never from `AppConfig.ready`, so `migrate`, `test` and other management commands never spawn it). Every worker runs the loop; a conditional `UPDATE` on `last_sent_at` guarantees only one worker per 24h window actually sends. The collector is out of scope; this change only produces the v1 wire contract.

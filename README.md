@@ -266,7 +266,6 @@ the file is a convenience and never a way to quietly override a deployment.
 | `EMAIL_USE_TLS` | Use TLS for SMTP | `True` |
 | `DEFAULT_FROM_EMAIL` | "From" address for outgoing mail | `webmaster@localhost` |
 | `FLAGWARD_TELEMETRY` | Anonymous daily usage telemetry; `false` turns it off (see [Telemetry](#telemetry)) | on, off when `CI=true` |
-| `FLAGWARD_TELEMETRY_URL` | Where telemetry is sent | Flagward collector |
 
 Email is entirely optional; a self-hosted instance keeps working with none of
 this set. It backs the password-reset flow (`POST
@@ -1219,7 +1218,6 @@ Copy `.env.example` to `.env` and configure:
 | `EMAIL_USE_TLS` | Use TLS for SMTP | `True` |
 | `DEFAULT_FROM_EMAIL` | "From" address for outgoing mail | `webmaster@localhost` |
 | `FLAGWARD_TELEMETRY` | Anonymous daily usage telemetry; `false` turns it off (see [Telemetry](#telemetry)) | on, off when `CI=true` |
-| `FLAGWARD_TELEMETRY_URL` | Where telemetry is sent | Flagward collector |
 
 See the "Environment Variables" section above for what happens with no
 `EMAIL_HOST` set, in both `DEBUG=True` and `DEBUG=False`.
@@ -1235,7 +1233,8 @@ hostnames.
 - See exactly what is sent: `python manage.py telemetry --show`
 - Off automatically in CI (`CI=true`)
 
-Every field is listed in [docs/telemetry.md](docs/telemetry.md).
+Every field is listed in [docs/telemetry.md](docs/telemetry.md), and the
+aggregates are public at [telemetry.flagward.com](https://telemetry.flagward.com).
 
 ## Development
 

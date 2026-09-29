@@ -19,6 +19,7 @@ from django.utils import timezone
 from telemetry import runtime
 from telemetry.models import InstallationIdentity
 from telemetry.sender import post, send
+from telemetry.settings import TELEMETRY_URL
 
 
 class FakeResponse:
@@ -52,7 +53,6 @@ class RecordingTransport:
 @pytest.fixture
 def telemetry_on(settings):
     settings.FLAGWARD_TELEMETRY = "true"
-    settings.FLAGWARD_TELEMETRY_URL = "http://collector.test/v1/heartbeat"
 
 
 @pytest.fixture
@@ -78,15 +78,13 @@ def _reset_started():
 
 
 class TestSender:
-    def test_posts_json_with_headers_and_timeout(self, settings, transport):
-        settings.FLAGWARD_TELEMETRY_URL = "http://collector.test/v1/heartbeat"
-
+    def test_posts_json_with_headers_and_timeout(self, transport):
         status = post({"schema_version": 1}, transport=transport)
 
         request, timeout = transport.requests[0]
         assert status == 204
         assert timeout == 3
-        assert request.full_url == "http://collector.test/v1/heartbeat"
+        assert request.full_url == TELEMETRY_URL
         assert request.get_method() == "POST"
         assert request.get_header("Content-type") == "application/json"
         assert request.get_header("User-agent").startswith("flagward-telemetry/")
@@ -97,7 +95,7 @@ class TestSender:
         [
             urllib.error.URLError("unreachable"),
             TimeoutError("timed out"),
-            urllib.error.HTTPError("http://collector.test", 500, "boom", None, None),
+            urllib.error.HTTPError(TELEMETRY_URL, 500, "boom", None, None),
             ValueError("anything else"),
         ],
     )

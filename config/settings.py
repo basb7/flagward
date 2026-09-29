@@ -399,10 +399,9 @@ CORS_ALLOW_HEADERS = [
 # FLAGWARD_TELEMETRY is kept raw (None when unset) because "unset" and "false"
 # mean different things: an explicit value always wins, while unset means on
 # unless this process runs inside a CI pipeline. telemetry.settings.is_enabled()
-# is the only place that interprets it.
+# is the only place that interprets it. The destination is fixed in
+# telemetry/settings.py and deliberately not configurable.
 FLAGWARD_TELEMETRY = os.getenv('FLAGWARD_TELEMETRY')
-# Empty means the default collector; telemetry.settings.telemetry_url() resolves it.
-FLAGWARD_TELEMETRY_URL = env_base_url('FLAGWARD_TELEMETRY_URL', '')
 FLAGWARD_VERSION = os.getenv('FLAGWARD_VERSION')
 CI = env_flag('CI', False)
 

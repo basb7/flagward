@@ -59,21 +59,28 @@ class TestIsEnabled:
 
 
 class TestTelemetryUrl:
-    def test_reads_the_configured_url(self, settings):
-        from telemetry.settings import telemetry_url
+    """
+    The destination is fixed: an operator can turn telemetry off, but cannot
+    point it anywhere else, so there is exactly one place the data can go.
+    """
 
-        settings.FLAGWARD_TELEMETRY_URL = "http://localhost:9999"
+    def test_is_the_flagward_collector(self):
+        from telemetry.settings import TELEMETRY_URL, telemetry_url
 
-        assert telemetry_url() == "http://localhost:9999"
+        assert TELEMETRY_URL == "https://telemetry.flagward.com/v1/heartbeat"
+        assert telemetry_url() == TELEMETRY_URL
 
-    @pytest.mark.parametrize("raw", ["", None])
-    def test_an_empty_url_falls_back_to_the_default_collector(self, settings, raw):
-        """compose forwards `${FLAGWARD_TELEMETRY_URL:-}`, which arrives as an empty string."""
-        from telemetry.settings import DEFAULT_TELEMETRY_URL, telemetry_url
+    def test_ignores_the_environment(self, monkeypatch):
+        from telemetry.settings import TELEMETRY_URL, telemetry_url
 
-        settings.FLAGWARD_TELEMETRY_URL = raw
+        monkeypatch.setenv("FLAGWARD_TELEMETRY_URL", "http://localhost:9999")
 
-        assert telemetry_url() == DEFAULT_TELEMETRY_URL
+        assert telemetry_url() == TELEMETRY_URL
+
+    def test_is_not_a_django_setting(self):
+        from django.conf import settings as django_settings
+
+        assert not hasattr(django_settings, "FLAGWARD_TELEMETRY_URL")
 
 
 class TestSuiteIsSilent:

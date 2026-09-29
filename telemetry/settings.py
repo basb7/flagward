@@ -6,7 +6,10 @@ from django.conf import settings
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
-DEFAULT_TELEMETRY_URL = "https://telemetry.flagward.com/v1/heartbeat"
+# Fixed on purpose: operators can turn telemetry off (FLAGWARD_TELEMETRY=false)
+# but not redirect it, so there is exactly one place the data can go and it is
+# the one docs/telemetry.md describes.
+TELEMETRY_URL = "https://telemetry.flagward.com/v1/heartbeat"
 
 
 def is_enabled() -> bool:
@@ -24,8 +27,4 @@ def is_enabled() -> bool:
 
 
 def telemetry_url() -> str:
-    """
-    Empty means default: compose forwards `${FLAGWARD_TELEMETRY_URL:-}`, which
-    reaches the container as an empty string rather than an unset variable.
-    """
-    return settings.FLAGWARD_TELEMETRY_URL or DEFAULT_TELEMETRY_URL
+    return TELEMETRY_URL

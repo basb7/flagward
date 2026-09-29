@@ -69,7 +69,6 @@ services:
       # run must not report itself as a development install.
       - CI=${CI:-}
       - FLAGWARD_TELEMETRY=${FLAGWARD_TELEMETRY:-}
-      - FLAGWARD_TELEMETRY_URL=${FLAGWARD_TELEMETRY_URL:-}
     depends_on:
       db:
         condition: service_healthy
