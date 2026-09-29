@@ -23,9 +23,15 @@ _EVALUATION_BUCKET_MAX = "100k+"
 
 
 def sdk_type_name(raw: str | None) -> str:
-    """`sdk_register` never validates `sdk_type`, so anything off the allowlist is "other"."""
+    """
+    `sdk_register` never validates `sdk_type`, so anything off the allowlist is "other".
+
+    Underscores are reported as hyphens: the collector accepts `[a-z0-9-]` only
+    and its schema is strict, so an `openfeature_web` would drop the whole
+    heartbeat rather than just this entry.
+    """
     name = (raw or "").strip().lower()
-    return name if name in _KNOWN_SDK_TYPES else OTHER
+    return name.replace("_", "-") if name in _KNOWN_SDK_TYPES else OTHER
 
 
 def sdk_version(raw: str | None) -> str:
