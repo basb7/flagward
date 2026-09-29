@@ -57,6 +57,7 @@ essentials to get Flagward running locally.
 - [Known Limitations](#known-limitations)
 - [Models](#models)
 - [Environment Variables](#environment-variables)
+- [Telemetry](#telemetry)
 - [Development](#development)
 - [Contributing](#contributing)
 - [Security](#security)
@@ -264,6 +265,8 @@ the file is a convenience and never a way to quietly override a deployment.
 | `EMAIL_HOST_PASSWORD` | SMTP password | empty |
 | `EMAIL_USE_TLS` | Use TLS for SMTP | `True` |
 | `DEFAULT_FROM_EMAIL` | "From" address for outgoing mail | `webmaster@localhost` |
+| `FLAGWARD_TELEMETRY` | Anonymous daily usage telemetry; `false` turns it off (see [Telemetry](#telemetry)) | on, off when `CI=true` |
+| `FLAGWARD_TELEMETRY_URL` | Where telemetry is sent | Flagward collector |
 
 Email is entirely optional; a self-hosted instance keeps working with none of
 this set. It backs the password-reset flow (`POST
@@ -1215,9 +1218,24 @@ Copy `.env.example` to `.env` and configure:
 | `EMAIL_HOST_PASSWORD` | SMTP password | empty |
 | `EMAIL_USE_TLS` | Use TLS for SMTP | `True` |
 | `DEFAULT_FROM_EMAIL` | "From" address for outgoing mail | `webmaster@localhost` |
+| `FLAGWARD_TELEMETRY` | Anonymous daily usage telemetry; `false` turns it off (see [Telemetry](#telemetry)) | on, off when `CI=true` |
+| `FLAGWARD_TELEMETRY_URL` | Where telemetry is sent | Flagward collector |
 
 See the "Environment Variables" section above for what happens with no
 `EMAIL_HOST` set, in both `DEBUG=True` and `DEBUG=False`.
+
+## Telemetry
+
+Once a day, Flagward sends anonymous, aggregate usage data: its version, runtime
+(Python, database, Docker or not), counts of projects, flags and rules, and which
+SDK versions are active. It never sends emails, names, flag keys, API keys or
+hostnames.
+
+- Turn it off: `FLAGWARD_TELEMETRY=false`
+- See exactly what is sent: `python manage.py telemetry --show`
+- Off automatically in CI (`CI=true`)
+
+Every field is listed in [docs/telemetry.md](docs/telemetry.md).
 
 ## Development
 
