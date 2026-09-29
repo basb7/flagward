@@ -6,9 +6,16 @@ fingerprintable values into coarse, safe ones before they leave the install.
 (`sdk_register` never validates them), so both are mapped against an
 allowlist. Evaluation volume is sent as a bucket, never as an exact count.
 """
+import re
+
 import pytest
 
+from sdk_api.models import SDKType
 from telemetry.anonymize import evaluation_bucket, plan_name, sdk_type_name, sdk_version
+
+# The collector's rule for `sdks[].type` (flagward-telemetry, lib/schema/v1.ts).
+# Its schema is strict, so one value outside this rejects the whole heartbeat.
+COLLECTOR_SDK_TYPE = re.compile(r"^[a-z0-9-]{1,32}$")
 
 
 class TestSdkTypeName:
@@ -19,10 +26,19 @@ class TestSdkTypeName:
             ("react", "react"),
             ("JavaScript", "javascript"),
             ("SVELTE", "svelte"),
+            ("OPENFEATURE_WEB", "openfeature-web"),
         ],
     )
     def test_a_known_type_is_reported_lowercased(self, raw, expected):
         assert sdk_type_name(raw) == expected
+
+    @pytest.mark.parametrize("value", SDKType.values)
+    def test_every_known_type_is_one_the_collector_accepts(self, value):
+        """An underscore would fail the collector's pattern and drop the heartbeat."""
+        assert COLLECTOR_SDK_TYPE.match(sdk_type_name(value))
+
+    def test_other_is_one_the_collector_accepts(self):
+        assert COLLECTOR_SDK_TYPE.match(sdk_type_name("my-internal-thing"))
 
     @pytest.mark.parametrize("raw", ["my-internal-thing", "", None, "REACT-acme"])
     def test_an_unknown_type_is_other(self, raw):

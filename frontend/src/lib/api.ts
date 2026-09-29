@@ -561,7 +561,8 @@ export type SDKType =
   | 'REACT'
   | 'VUE'
   | 'SOLID'
-  | 'SVELTE';
+  | 'SVELTE'
+  | 'OPENFEATURE_WEB';
 
 export interface SDKRegistration {
   id: string;
