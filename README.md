@@ -16,6 +16,7 @@
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/)
 [![Django 6.1](https://img.shields.io/badge/django-6.1-092E20.svg)](https://www.djangoproject.com/)
 [![Docs](https://img.shields.io/badge/docs-docs.flagward.com-informational.svg)](https://docs.flagward.com)
+[![OpenFeature](https://img.shields.io/badge/OpenFeature-provider-5D5DFF.svg)](https://openfeature.dev/ecosystem?instant_search%5Bquery%5D=flagward)
 
 **Open-source feature flags with local SDK evaluation and real-time updates.**
 
@@ -30,6 +31,9 @@ client in real time over SSE.
   audit trail
 - **Targeting rules** — boolean and multivariate flags, per-rule percentage
   rollouts, and a deterministic `PERCENTAGE_SPLIT` condition
+- **OpenFeature provider** — listed in the [OpenFeature ecosystem](https://openfeature.dev/ecosystem?instant_search%5Bquery%5D=flagward);
+  switch an OpenFeature web app to Flagward by changing the provider
+  ([docs](https://docs.flagward.com/sdks/openfeature))
 - **Self-hostable** — one `docker compose up` away
 
 > [!IMPORTANT]
