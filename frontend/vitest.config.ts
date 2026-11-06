@@ -19,9 +19,10 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['e2e/**', 'node_modules/**', '.next/**'],
-    // Since Vitest 4, restoreMocks only restores vi.spyOn spies; clearMocks
-    // is what wipes the call history of shared vi.fn() mocks between tests.
-    clearMocks: true,
+    // Since Vitest 4, restoreMocks only restores vi.spyOn spies. mockReset
+    // gives every test a factory-fresh vi.fn(): no call history and no
+    // return value or implementation left over from the previous test.
+    mockReset: true,
     restoreMocks: true,
   },
   resolve: {
