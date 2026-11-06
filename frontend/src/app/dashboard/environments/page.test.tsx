@@ -81,3 +81,32 @@ describe('EnvironmentsPage loading state', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('EnvironmentsPage without an organization', () => {
+  /**
+   * The call to action navigates, so it must stay a real link. Rendering a
+   * Base UI Button as a Link made Base UI warn that it expected a native
+   * <button>, and its `nativeButton={false}` escape hatch would announce the
+   * link as a button (role="button") to assistive technology.
+   */
+  it('links to the overview without a Base UI native-button warning', () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    tenantState = {
+      organizations: [],
+      currentOrganization: null,
+      currentProject: null,
+      isLoading: false,
+    };
+    renderWithIntl(<EnvironmentsPage />);
+
+    expect(
+      screen.getByRole('link', { name: 'Go to Overview' }),
+    ).toHaveAttribute('href', '/dashboard');
+    const nativeButtonWarnings = consoleError.mock.calls
+      .map((args) => args.map(String).join(' '))
+      .filter((message) => message.includes('nativeButton'));
+    expect(nativeButtonWarnings).toEqual([]);
+  });
+});

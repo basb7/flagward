@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CreateEnvironmentDialog } from '@/components/dashboard/create-environment-dialog';
 import { CreateProjectDialog } from '@/components/dashboard/create-project-dialog';
 import { DataTableSkeleton } from '@/components/dashboard/skeletons/data-table-skeleton';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -118,9 +118,11 @@ export default function EnvironmentsPage() {
           title={t('createOrganizationFirstTitle')}
           description={t('createOrganizationFirstDescription')}
           action={
-            <Button render={<Link href="/dashboard" />}>
+            // A link styled as a button, not a Base UI Button rendered as
+            // a link: keeps native link semantics for assistive technology.
+            <Link href="/dashboard" className={buttonVariants()}>
               {t('goToOverview')}
-            </Button>
+            </Link>
           }
         />
       </div>
