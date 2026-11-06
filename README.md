@@ -134,7 +134,7 @@ docker compose up
 #### Prerequisites
 
 - Python 3.14+
-- Node.js 20+
+- Node.js 24 (LTS)
 
 #### Backend Setup
 
