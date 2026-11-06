@@ -19,14 +19,14 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['e2e/**', 'node_modules/**', '.next/**'],
+    // Since Vitest 4, restoreMocks only restores vi.spyOn spies; clearMocks
+    // is what wipes the call history of shared vi.fn() mocks between tests.
+    clearMocks: true,
     restoreMocks: true,
   },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
-  },
-  esbuild: {
-    jsx: 'automatic',
   },
 });
